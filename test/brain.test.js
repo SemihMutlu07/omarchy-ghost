@@ -40,7 +40,13 @@ test("unknown apps get the fallback", () => {
   freshConfig()
   const msg = Brain.feed({ type: "focus", class: "some-weird-app" })
   assert.ok(msg && msg.length > 0)
-  assert.match(msg, /weird|that app/i)
+  assert.match(msg, /weird/i)
+})
+
+test("focus remembers the app for later ambient lines", () => {
+  freshConfig()
+  Brain.feed({ type: "focus", class: "firefox" })
+  assert.equal(Brain._state().lastApp, "firefox")
 })
 
 test("min interval gates low-priority events", () => {
@@ -297,4 +303,123 @@ test("peak insight needs 2+ days of history", () => {
   const p = Brain.insightPeak()
   assert.ok(p, "peak fires at the historical golden hour")
   assert.equal(Brain.insightPeak(), null, "once per day")
+})
+
+// ------------------------------------------------------------ recaps + companion
+
+function dateKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
+}
+
+test("week recap sums last 7 days including today", () => {
+  freshConfig()
+  Brain._resetMemory()
+  const today = new Date()
+  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  Brain.loadState(JSON.stringify({
+    today: dateKey(today),
+    todayMinutes: { terminal: 120 },
+    days: { [dateKey(y)]: { minutes: { terminal: 180, browser: 60 } } },
+    lastWeeklyFor: ""
+  }))
+  const msg = Brain.weekMessage({ force: true })
+  assert.ok(msg)
+  assert.match(msg, /5h in terminal/)
+  assert.match(msg, /browser/)
+})
+
+test("automatic week recap fires once per iso week", () => {
+  freshConfig()
+  Brain._resetMemory()
+  const today = new Date()
+  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
+  Brain.loadState(JSON.stringify({
+    today: dateKey(today),
+    todayMinutes: { terminal: 60 },
+    days: { [dateKey(y)]: { minutes: { terminal: 60 } } },
+    lastWeeklyFor: ""
+  }))
+  const first = Brain.weekMessage({})
+  assert.ok(first)
+  assert.equal(Brain.weekMessage({}), "", "second automatic week recap is silent")
+})
+
+test("automatic week recap waits for two days of data", () => {
+  freshConfig()
+  Brain._resetMemory()
+  const today = new Date()
+  Brain.loadState(JSON.stringify({
+    today: dateKey(today),
+    todayMinutes: { terminal: 180 },
+    days: {},
+    lastWeeklyFor: ""
+  }))
+  assert.equal(Brain.weekMessage({}), "")
+  const forced = Brain.weekMessage({ force: true })
+  assert.ok(forced)
+  assert.match(forced, /terminal/)
+})
+
+test("month recap reads the previous month", () => {
+  freshConfig()
+  Brain._resetMemory()
+  const today = new Date()
+  const prev = new Date(today.getFullYear(), today.getMonth() - 1, 15)
+  Brain.loadState(JSON.stringify({
+    today: dateKey(today),
+    todayMinutes: {},
+    days: { [dateKey(prev)]: { minutes: { terminal: 600 } } },
+    lastMonthlyFor: ""
+  }))
+  const msg = Brain.monthMessage({})
+  assert.ok(msg)
+  assert.match(msg, /10h in terminal/)
+  assert.equal(Brain.monthMessage({}), "", "second monthly recap is silent")
+})
+
+test("companion pokes when several workspaces sit untouched", () => {
+  freshConfig()
+  Brain._resetMemory()
+  Brain.loadState("{}")
+  const now = Date.now()
+  Brain.noteWorkspaces([
+    { id: 1, name: "main", windows: 2, focused: true },
+    { id: 4, name: "movieswrapped", windows: 3, focused: false },
+    { id: 5, name: "clipzi", windows: 1, focused: false },
+    { id: 6, name: "mistakes", windows: 2, focused: false }
+  ], now)
+  const msg = Brain.companion(now)
+  assert.ok(msg && msg.length > 0)
+  assert.match(msg, /movieswrapped|clipzi|mistakes|sitting|open/i)
+  assert.equal(Brain.companion(now), "", "companion has a long gap")
+})
+
+test("companion stays quiet with only two occupied workspaces", () => {
+  freshConfig()
+  Brain._resetMemory()
+  Brain.loadState("{}")
+  const now = Date.now()
+  Brain.noteWorkspaces([
+    { id: 1, name: "main", windows: 2, focused: true },
+    { id: 2, name: "other", windows: 1, focused: false }
+  ], now)
+  assert.equal(Brain.companion(now), "")
+})
+
+test("workspace names prefer window titles over hypr numbers", () => {
+  freshConfig()
+  Brain._resetMemory()
+  Brain.loadState("{}")
+  const now = Date.now()
+  Brain.noteWorkspaces([
+    { id: 1, name: "1", title: "Main", windows: 2, focused: true },
+    { id: 4, name: "4", title: "omarchy: [4] movieswrapped-scraper", windows: 3, focused: false },
+    { id: 5, name: "5", title: "Clipzi.app", windows: 1, focused: false },
+    { id: 6, name: "6", title: "Mistakes", windows: 2, focused: false }
+  ], now)
+  const named = Brain._memory().workspaces["4"].name
+  assert.match(named, /movieswrapped/i)
+  const msg = Brain.companion(now)
+  assert.ok(msg)
+  assert.match(msg, /movieswrapped|Clipzi|Mistakes|open|sitting/i)
 })

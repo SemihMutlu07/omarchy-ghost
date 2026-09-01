@@ -4,12 +4,11 @@ Design document for the Ghost Omarchy plugin. Version 0.1.0.
 
 ## 1. Concept
 
-A one-way conversational companion for the desktop. Ghost observes what you
-do, keeps a local model of *your* habits, and occasionally surfaces a short,
-warm, playful message in a bottom-right bubble. You cannot reply — you can only
-dismiss it, and dismissal feeds back into how often it talks about that topic.
+A one-way desktop pet. Ghost sits in the bottom-right corner and occasionally
+says a short, deadpan line — usually `boo.` You cannot reply. You can only
+dismiss it.
 
-**North star:** delightful, never annoying, zero data leaves the machine.
+**North star:** present, never helpful, never trying to be funny.
 
 ## 2. Non-goals
 
@@ -49,12 +48,12 @@ dismiss it, and dismissal feeds back into how often it talks about that topic.
 
 ### 5.1 Gating (whether to speak)
 
-- **Cooldown:** `minIntervalSec` between messages (default 900 s). Priority ≥ 2
+- **Cooldown:** `minIntervalSec` between messages (default 180 s). Priority ≥ 2
   events (theme, welcome-back, late-night, digest) bypass.
 - **Quiet hours:** `quietHoursStart..End` (default 01:00–07:00). Ambient,
   focus, window, workspace, title, insights are suppressed.
-- **Idle:** no activity for `idleSeconds` (default 600 s) → silent until the
-  user returns (welcome-back).
+- **Idle:** no focused window for `idleSeconds` (default 600 s) → silent until
+  a window is focused again (welcome-back). Sitting still in an app is presence.
 - **Noise gate:** > 5 focus events in 60 s → stay quiet (app-switching frenzy).
 - **App dedupe:** same category not re-commented within 2 h.
 - **Variant dedupe:** no template line reused within `variantCooldownSec`.
@@ -76,13 +75,16 @@ dismiss it, and dismissal feeds back into how often it talks about that topic.
 | `long-session` | each new full hour (0.5) | "You've been at this for 3 hours." |
 | `title-change` | focused title change (0.5) | "New mission: make test." |
 | `unexpected` | habit deviation (0.5, once/day-part) | "Firefox? At this hour? You're usually in the editor." |
-| `digest` | midnight rollover (once) | "Yesterday: 3h 20m in editor… And 23 windows." |
-| `ambient` | random in [min,max] | "You blinked. I didn't. We're the same." |
+| `digest` | midnight rollover (once) | "yesterday: 3h 20m in editor." |
+| `week` | once per ISO week | "this week: 18h in terminal, 6h in browser." |
+| `month` | once per month (previous month) | "august: 80h in terminal." |
+| `stale` | ≥3 occupied workspaces, ≥2 untouched ≥90 min, once/3h | "6 open. most of them just sitting there." |
+| `ambient` | random in [min,max] (default 3–12 min) | "boo." |
 | `insight-*` | metric tick (0.6, budget) | "Every 3 minutes: browser → editor. A classic dance." |
 
 ### 5.3 Metrics
 
-Tracked per day, shipped to 14 days of history on rollover:
+Tracked per day, shipped to 90 days of history on rollover:
 
 - `todayMinutes` — minutes per app category (fractional; 30 s heartbeat)
 - `hourCounts` — active minutes per hour → `peakHour`
@@ -103,8 +105,8 @@ Tracked per day, shipped to 14 days of history on rollover:
 ## 6. Memory & persistence
 
 `~/.local/state/omarchy/ghost/state.json` — written by the heartbeat via
-`FileView.setText`, reloaded on change. Contains today's partials + up to 14
-`days` records + dismissal weights. TTL: 14 days.
+`FileView.setText`, reloaded on change. Contains today's partials + up to 90
+`days` records, workspace last-seen times, and dismissal weights.
 
 ## 7. UI
 

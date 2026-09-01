@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "semihmutlu.ghost",
   "name": "Ghost",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "author": "Semih Mutlu",
   "license": "MIT",
-  "description": "A little ghost that watches what you do on Omarchy and whispers nice little messages. One-way — it never expects a reply.",
+  "description": "A tiny ghost in the corner of your Omarchy desktop. Sometimes it says boo.",
   "kinds": ["overlay"],
   "keepLoaded": true,
   "entryPoints": {

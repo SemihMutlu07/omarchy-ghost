@@ -12,12 +12,12 @@
 
 var DEFAULTS = {
   enabled: true,
-  minIntervalSec: 900,        // never whisper more often than this
-  maxIntervalSec: 3600,       // ambient whispers are scheduled somewhere in [min, max]
+  minIntervalSec: 180,        // floor between whispers (presence ping)
+  maxIntervalSec: 720,        // ambient boo lands in [min, max]
   variantCooldownSec: 1800,   // don't reuse a line within this window
   quietHoursStart: 1,         // 01:00 …
   quietHoursEnd: 7,           // … 07:00 local
-  idleSeconds: 600,           // no observed activity for this long = you're away
+  idleSeconds: 600,           // no focused window this long = you're away
   whisperDurationSec: 6,
   graceSec: 10,              // ignore desktop events for this long after load
   brain: "templates",         // "templates" | "auto" | "llm"
@@ -246,167 +246,178 @@ function isIdle() { return idle }
 var T = {}
 
 T.browser = [
-  "{app} with {tabs} tabs. Pure optimism.",
-  "Another browser window. The tab orchard grows.",
-  "{app}. I tried counting the tabs. I gave up. Respect.",
-  "Ah, {app}. Where your 3 AM questions live."
+  "{app}.",
+  "the browser.",
+  "{app}. still.",
+  "tabs."
 ]
 
 T.terminal = [
-  "The terminal. Where everything makes sense.",
-  "Deep in the terminal again. I can hear the typing from here.",
-  "{app}. A home among the pixels.",
-  "Back to the terminal. The one place that always listens."
+  "the terminal.",
+  "this.",
+  "{app}.",
+  "typing."
 ]
 
 T.editor = [
-  "Deep in the editor. I'll guard the door.",
-  "The cursor blinks. So do I. Solidarity.",
-  "{app}. Making the computer do things, one keystroke at a time.",
-  "You're writing. I'm watching fondly. We're both productive."
+  "the editor.",
+  "{app}.",
+  "still writing.",
+  "the cursor."
 ]
 
 T.vim = [
-  "Vim. A person of culture.",
-  "Esc is my favourite key too.",
-  "Vim. Half the screen is modes, and you master them all."
+  "vim.",
+  "esc.",
+  "vim. still."
 ]
 
 T.music = [
-  "Good music. I'm swaying. (Ghosts don't have legs. It's a vibe.)",
-  "{app}. The soundtrack of a good session.",
-  "Oh, nice. This is a good one. Keep it playing."
+  "{app}.",
+  "music.",
+  "this song."
 ]
 
 T.chat = [
-  "Chatter detected. I'll wait outside.",
-  "{app}. So many people. So little ghostly privacy.",
-  "Talking to humans, I see. I only watch. It's fine. I have my pixels."
+  "{app}.",
+  "people.",
+  "chat."
 ]
 
 T.games = [
-  "Games? I'll keep the other ghosts out of the machine.",
-  "{app}. Let's go. I believe in you.",
-  "Loading… Loading… Worth it."
+  "{app}.",
+  "game.",
+  "loading."
 ]
 
 T.video = [
-  "Movie mode. Shhh — I'll be quiet.",
-  "{app}. I won't spoil anything. I don't know the plot either."
+  "{app}.",
+  "movie.",
+  "shh."
 ]
 
 T.design = [
-  "Designing. Beautiful. Also: don't forget to commit.",
-  "{app}. Making the pixels pretty. My specialty.",
-  "Art. I'm watching with my many non-existent eyes."
+  "{app}.",
+  "pixels.",
+  "designing."
 ]
 
 T.files = [
-  "Filing. So organized. Proud of you.",
-  "{app}. A tidy house is a tidy mind. Or so I've heard.",
-  "Sorting things. Satisfying, isn't it?"
+  "{app}.",
+  "files.",
+  "sorting."
 ]
 
 T.focusFallback = [
-  "A focused {app}. Tell me more — actually, don't. I'm a ghost.",
-  "{app}, huh? Interesting choice. I respect it.",
-  "You and {app}, again. You two are close.",
-  "Welcome to {app}. I'll be right here. Watching. Fondly."
+  "{app}.",
+  "{app}. ok.",
+  "you and {app}."
 ]
 
 T["window-open"] = [
-  "A new window appears. The plot thickens.",
-  "And yet another window. This is {count} today. Ambitious.",
-  "New window: welcome. Make yourself at home."
+  "a window.",
+  "another one. {count} today.",
+  "window."
 ]
 
 T["window-close"] = [
-  "Goodbye, window. You will be missed. By no one.",
-  "A window closed. Peace at last.",
-  "Windows closing. Decluttering. I approve."
+  "gone.",
+  "closed.",
+  "one less."
 ]
 
 T.workspace = [
-  "Workspace {ws} — {windows:window} over there. The chaos room. Respect.",
-  "Workspace {ws}. A whole mood.",
-  "You keep {windows:window} alive over there on {ws}. Dedication."
+  "workspace {ws}. {windows:window}.",
+  "{ws}.",
+  "{windows:window} on {ws}."
 ]
 
 T.home = [
-  "Back to base. Workspace 1, where it all started.",
-  "Home again. The bar missed you."
+  "home.",
+  "workspace 1."
 ]
 
 T.fullscreen = [
-  "Fullscreen. I'll stand guard outside the frame.",
-  "Immersive mode. I'll hold the rest of the screen for you.",
-  "Fullscreen — big dreams. I'm watching proudly."
+  "fullscreen.",
+  "big.",
+  "ok. fullscreen."
 ]
 
 T.theme = [
-  "Ooh — {theme}? New coat of paint. I approve.",
-  "{theme}. Nice choice. Very you.",
-  "A new theme. I was getting tired of the old colours anyway.",
-  "The desk got a makeover. {theme}. Fancy."
+  "{theme}.",
+  "new colours. {theme}.",
+  "{theme}. ok."
 ]
 
 T.morning = [
-  "Morning. The cursor missed you.",
-  "Good morning. I watched the screen stay dark for you.",
-  "A fresh day. I've been here the whole time, obviously."
+  "morning.",
+  "hi.",
+  "you again."
 ]
 
 T["late-night"] = [
-  "It's {time} AM. The other ghosts are asleep. Just us now.",
-  "Past midnight, still going. I'm impressed. And slightly worried. Mostly impressed.",
-  "This hour is for the dedicated. And us ghosts.",
-  "2 AM club. Membership: you, me, and the fan noise."
+  "{time} AM.",
+  "still up.",
+  "late.",
+  "{time} AM. just us."
 ]
 
 T["welcome-back"] = [
-  "Welcome back. I held the fort. Nothing happened. I was very brave.",
-  "You were gone. I stared at the wallpaper. We're even.",
-  "Ah, you're back. I practised my spooky face while you were away.",
-  "Welcome back. The screen flickered a little in your absence."
+  "you're back.",
+  "hi.",
+  "boo.",
+  "still here."
 ]
 
 T["long-session"] = [
-  "You've been at this for {hours} hours. I'm impressed. Your wrist may not be.",
-  "{hours} hours straight. Even ghosts take a breather. (We don't need to.)",
-  "Marathon session: {hours} hours. I'm counting. I'm always counting.",
-  "A solid {hours} hours. The keyboard has earned its rest."
+  "{hours} hours.",
+  "still going. {hours} hours.",
+  "{hours} hours in."
 ]
 
 T.ambient = [
-  "I counted {windows:window} just now. A new record, I believe.",
-  "You've opened {opens:window} since I woke up. Busy day.",
-  "{switches} workspace switches in the last hour. Exercising the layout, I see.",
-  "You've been in {app} for {minutes} minutes. You're in the zone. I'll guard it.",
-  "I've whispered {messages} times today. I'm chatty today. Forgive me.",
-  "The wallpaper looks nice from here. Good angle.",
-  "Everything's quiet. I like it when it's quiet. Ghosts do.",
-  "You blinked. I didn't. We're the same."
+  "boo.",
+  "boo",
+  "still here.",
+  "hi.",
+  ".",
+  "{windows:window}.",
+  "{minutes} minutes in {app}."
 ]
 
 T.unexpected = [
-  "{app}? At this hour? You're usually in {usual} around now.",
-  "Hmm, {app}. I've seen you do {usual} at this time before. Not judging. Impressed, actually.",
-  "Plot twist: {app} at this hour. Your usual is {usual}.",
-  "Interesting. {app} instead of {usual}. Living dangerously, I see."
+  "{app}? usually {usual}.",
+  "{app} instead of {usual}.",
+  "{app}. not {usual}."
 ]
 
 T.digest = [
-  "Yesterday: {summary}. And {opens:window}. A full life.",
-  "Recap of yesterday: {summary}. I kept the log. I'm always keeping the log.",
-  "Yesterday was {summary}. Your ghost historian has spoken.",
-  "{summary} — that was yesterday. Today has potential."
+  "yesterday: {summary}. {opens:window}.",
+  "{summary}. that was yesterday.",
+  "yesterday was {summary}."
+]
+
+T.week = [
+  "this week: {summary}.",
+  "{days} days. {summary}."
+]
+
+T.month = [
+  "{month}: {summary}.",
+  "this month: {summary}."
+]
+
+T.stale = [
+  "{n} open.",
+  "{name} is still there.",
+  "{stale} of {n} sitting.",
+  "{name}."
 ]
 
 T["title-change"] = [
-  "New mission: {title}.",
-  "I see {title}. Interesting pivot.",
-  "You switched to {title}. The plot advances.",
-  "{title}, huh? Okay. I'm watching."
+  "{title}.",
+  "now: {title}.",
+  "{title}."
 ]
 
 // -------------------------------------------------------------- generation
@@ -458,6 +469,7 @@ function feed(ev) {
     var cat = appCategory(ev.class)
     var appName = friendlyAppName(ev.class, ctx.app)
     ctx.app = appName
+    lastApp = String(ev.class || "")
     recentFocus.push(now)
 
     // The same app twice in a row isn't an event; Ghost.qml only feeds on
@@ -635,8 +647,14 @@ function markLlmAttempt() { llmLastTry = nowMs() }
 // ---------------------------------------------------------------- memory
 
 // Ghost's long-term memory, persisted by Ghost.qml to
-// ~/.local/state/omarchy/ghost/state.json. Fourteen days of what you did,
-// used to notice when today breaks the pattern and to write the daily recap.
+// ~/.local/state/omarchy/ghost/state.json. Ninety days of what you did,
+// used for weekly/monthly recaps, habit deviations, and the daily recap.
+
+var DAYS_KEEP = 90
+var STALE_MS = 90 * 60 * 1000
+var COMPANION_MS = 3 * 60 * 60 * 1000
+var MONTHS = ["january", "february", "march", "april", "may", "june",
+  "july", "august", "september", "october", "november", "december"]
 
 var memory = null
 
@@ -659,10 +677,14 @@ function freshMemory() {
     announcedDeep: 0,        // last announced deep-work hour
     announcedRhythmDate: "",
     announcedPeakDate: "",
-    days: {},                // "YYYY-MM-DD" -> { minutes, byPart, firstActivityHour, lastActivityHour, windowsOpened, activeMinutes, peakHour, sessionCount, avgSessionMin, longestSessionMin, switchCount }
-    dismissals: {},          // template id -> dismiss count
-    weights: {},             // category -> 0.3 .. 1.5
-    lastDigestFor: ""        // date whose recap already shipped
+    days: {},                // "YYYY-MM-DD" -> daily record
+    dismissals: {},
+    weights: {},
+    lastDigestFor: "",
+    lastWeeklyFor: "",
+    lastMonthlyFor: "",
+    lastCompanionAt: 0,
+    workspaces: {}           // id -> { name, lastMs, windows }
   }
 }
 
@@ -690,7 +712,9 @@ function loadState(raw) {
         || k === "lastDigestFor" || k === "activeMinutes" || k === "hourCounts"
         || k === "sessions" || k === "switchCount" || k === "insightsToday"
         || k === "announcedStretch" || k === "announcedDeep"
-        || k === "announcedRhythmDate" || k === "announcedPeakDate") {
+        || k === "announcedRhythmDate" || k === "announcedPeakDate"
+        || k === "lastWeeklyFor" || k === "lastMonthlyFor"
+        || k === "lastCompanionAt" || k === "workspaces") {
       m[k] = parsed[k]
     }
   }
@@ -783,7 +807,7 @@ function rolloverIfNeeded() {
       switchCount: memory.switchCount
     }
     var keys = Object.keys(memory.days).sort()
-    var excess = keys.length - 14
+    var excess = keys.length - DAYS_KEEP
     for (var i = 0; i < excess; i++) delete memory.days[keys[i]]
   }
   memory.today = t
@@ -853,6 +877,232 @@ function summarizeMinutes(minutes) {
   return parts.join(", ")
 }
 
+function pad2(n) {
+  return (n < 10 ? "0" : "") + n
+}
+
+function isoWeekKey(d) {
+  var t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  t.setUTCDate(t.getUTCDate() + 4 - (t.getUTCDay() || 7))
+  var yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
+  var weekNo = Math.ceil((((t - yearStart) / 86400000) + 1) / 7)
+  return t.getUTCFullYear() + "-W" + pad2(weekNo)
+}
+
+function monthKey(y, m) {
+  return y + "-" + pad2(m + 1)
+}
+
+function lastNDateKeys(n, now) {
+  now = now || new Date()
+  var keys = []
+  var i
+  for (i = 0; i < n; i++) {
+    var d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i)
+    keys.push(dateString(d))
+  }
+  return keys
+}
+
+function dateKeysInMonth(y, m) {
+  var keys = []
+  var d = new Date(y, m, 1)
+  while (d.getMonth() === m) {
+    keys.push(dateString(d))
+    d.setDate(d.getDate() + 1)
+  }
+  return keys
+}
+
+function sumMinutesMaps(maps) {
+  var out = {}
+  var i, cat
+  for (i = 0; i < maps.length; i++) {
+    var map = maps[i] || {}
+    for (cat in map) out[cat] = (out[cat] || 0) + Number(map[cat] || 0)
+  }
+  return out
+}
+
+function minutesForKeys(keys, includeToday) {
+  if (!memory) return {}
+  var maps = []
+  var i
+  for (i = 0; i < keys.length; i++) {
+    if (includeToday && keys[i] === memory.today) maps.push(memory.todayMinutes)
+    else if (memory.days[keys[i]] && memory.days[keys[i]].minutes) maps.push(memory.days[keys[i]].minutes)
+  }
+  return sumMinutesMaps(maps)
+}
+
+function countKeysWithData(keys, includeToday) {
+  if (!memory) return 0
+  var n = 0
+  var i
+  for (i = 0; i < keys.length; i++) {
+    if (includeToday && keys[i] === memory.today && memory.todayMinutes && Object.keys(memory.todayMinutes).length) n++
+    else if (memory.days[keys[i]] && memory.days[keys[i]].minutes) n++
+  }
+  return n
+}
+
+function weekMessage(opts) {
+  opts = opts || {}
+  if (!memory) memory = freshMemory()
+  var keys = lastNDateKeys(7)
+  var summary = summarizeMinutes(minutesForKeys(keys, true))
+  if (summary === "") return ""
+  if (!opts.force) {
+    var wk = isoWeekKey(new Date())
+    if (memory.lastWeeklyFor === wk) return ""
+    if (countKeysWithData(keys, true) < 2) return ""
+    memory.lastWeeklyFor = wk
+  }
+  return say("week", T.week, { summary: summary, days: String(countKeysWithData(keys, true)) })
+}
+
+function monthMessage(opts) {
+  opts = opts || {}
+  if (!memory) memory = freshMemory()
+  var now = new Date()
+  var y = now.getFullYear()
+  var m = now.getMonth()
+  if (!opts.current) {
+    m -= 1
+    if (m < 0) { m = 11; y -= 1 }
+  }
+  var keys = dateKeysInMonth(y, m)
+  var includeToday = (y === now.getFullYear() && m === now.getMonth())
+  var summary = summarizeMinutes(minutesForKeys(keys, includeToday))
+  if (summary === "") return ""
+  if (!opts.force) {
+    var stamp = monthKey(y, m)
+    if (memory.lastMonthlyFor === stamp) return ""
+    memory.lastMonthlyFor = stamp
+  }
+  return say("month", T.month, { summary: summary, month: MONTHS[m] })
+}
+
+function periodRecap() {
+  if (!cfg.enabled) return ""
+  if (!cooldownOk(1.5)) return ""
+  var month = monthMessage({})
+  if (month) return month
+  return weekMessage({})
+}
+
+function noteWorkspaces(list, now) {
+  if (!memory) memory = freshMemory()
+  now = now !== undefined ? now : nowMs()
+  if (!memory.workspaces) memory.workspaces = {}
+  var seen = {}
+  var i
+  for (i = 0; i < list.length; i++) {
+    var w = list[i] || {}
+    var id = String(w.id)
+    if (id === "" || id === "undefined" || id === "NaN") continue
+    seen[id] = true
+    var rec = memory.workspaces[id]
+    if (!rec) {
+      rec = {
+        name: "",
+        lastMs: w.focused ? now : now - STALE_MS,
+        windows: 0
+      }
+    }
+    rec.name = betterWorkspaceName(w.name, w.title, rec.name)
+    rec.windows = Number(w.windows || 0)
+    if (w.focused) rec.lastMs = now
+    memory.workspaces[id] = rec
+  }
+  for (var k in memory.workspaces) {
+    if (!seen[k]) delete memory.workspaces[k]
+  }
+}
+
+function nameScore(s) {
+  s = String(s || "").trim()
+  if (s === "") return 0
+  if (/^[0-9]+$/.test(s)) return 1
+  return 2 + Math.min(s.length, 24)
+}
+
+function cleanWorkspaceTitle(raw) {
+  var t = String(raw || "").trim()
+  if (t === "") return ""
+  t = t.replace(/^omarchy:\s*/i, "")
+  t = t.replace(/^\[\d+\]\s*/, "")
+  t = t.replace(/\s+[—–|\-]\s+.*$/, "")
+  t = t.replace(/\s+\/\s+.*$/, "")
+  t = t.trim()
+  if (t === "" || /^content$/i.test(t) || /^(~|\/)/.test(t)) return ""
+  if (t.length > 24) t = t.slice(0, 21) + "…"
+  return t
+}
+
+function betterWorkspaceName(hyprName, title, existing) {
+  var candidates = [
+    String(existing || ""),
+    String(hyprName || ""),
+    cleanWorkspaceTitle(title)
+  ]
+  var best = ""
+  var bestN = 0
+  var i
+  for (i = 0; i < candidates.length; i++) {
+    var n = nameScore(candidates[i])
+    if (n > bestN) {
+      bestN = n
+      best = candidates[i]
+    }
+  }
+  return best
+}
+
+function workspaceLabel(rec, id) {
+  var name = String((rec && rec.name) || "")
+  if (name === "" || name === String(id) || /^[0-9]+$/.test(name)) return "workspace " + id
+  if (name.length > 24) return name.slice(0, 21) + "…"
+  return name
+}
+
+function companion(now, opts) {
+  opts = opts || {}
+  if (!cfg.enabled) return ""
+  now = now !== undefined && now !== null ? now : nowMs()
+  if (!opts.force) {
+    if (idle) return ""
+    if (inQuietHours()) return ""
+    if (!cooldownOk(0.4)) return ""
+    if (now - Number(memory.lastCompanionAt || 0) < COMPANION_MS) return ""
+  }
+  if (!memory || !memory.workspaces) return ""
+
+  var occupied = []
+  var id
+  for (id in memory.workspaces) {
+    var rec = memory.workspaces[id]
+    if (!rec || Number(rec.windows || 0) < 1) continue
+    occupied.push({ id: id, rec: rec, age: now - Number(rec.lastMs || 0) })
+  }
+  if (occupied.length < 3) return ""
+
+  var stale = []
+  var i
+  for (i = 0; i < occupied.length; i++) {
+    if (occupied[i].age >= STALE_MS) stale.push(occupied[i])
+  }
+  if (stale.length < 2) return ""
+
+  stale.sort(function(a, b) { return b.age - a.age })
+  memory.lastCompanionAt = now
+  return say("stale", T.stale, {
+    n: String(occupied.length),
+    stale: String(stale.length),
+    name: workspaceLabel(stale[0].rec, stale[0].id)
+  })
+}
+
 // Most-used category for a day-part across the last 14 days, excluding the
 // category we're currently judging against.
 function usualFor(part, currentCat) {
@@ -895,6 +1145,7 @@ function weightKeyFor(kind) {
   if (kind === "unexpected") return "unexpected"
   if (kind === "ambient") return "ambient"
   if (kind === "title-change") return "title"
+  if (kind === "stale" || kind === "week" || kind === "month") return kind
   return "misc"
 }
 
@@ -924,27 +1175,24 @@ function weightFor(key) {
 // budget, so it nudges without becoming the thing you keep shooing away.
 
 T.stretch = [
-  "Your longest stretch today: {minutes} minutes in {app}. I'm impressed.",
-  "{minutes} minutes straight in {app}. The zone is real.",
-  "Record so far today: {minutes} minutes in {app}. Keep it up."
+  "{minutes} minutes in {app}.",
+  "{minutes} minutes. {app}.",
+  "{app}. {minutes} minutes."
 ]
 
 T.rhythm = [
-  "Every {minutes} minutes: {a} → {b} → {a} → {b}. I could set my watch to it.",
-  "{a} and {b}, trading places every {minutes} minutes. A classic dance.",
-  "You two — {a}, {b}, {a}, {b}. The rhythm is strong today."
+  "{a} → {b} → {a} → {b}. every {minutes} minutes.",
+  "{a} and {b}. every {minutes} minutes."
 ]
 
 T.deep = [
-  "{hours} hours of focused work today. I counted every minute. (I always do.)",
-  "{hours} hours in. The keyboard has earned its rest — eventually.",
-  "Deep-work total: {hours} hours. Ghost-approved."
+  "{hours} hours.",
+  "{hours} hours in."
 ]
 
 T.peak = [
-  "This is your golden hour — {time}. History agrees.",
-  "{time} is usually when you do your best work. I can feel it again today.",
-  "Your peak hour: {time}. The numbers never lie."
+  "{time}.",
+  "this hour. {time}."
 ]
 
 function insight() {
@@ -1091,6 +1339,11 @@ if (typeof module !== "undefined" && module.exports) {
     noteWindowOpened: noteWindowOpened,
     rolloverIfNeeded: rolloverIfNeeded,
     digestMessage: digestMessage,
+    weekMessage: weekMessage,
+    monthMessage: monthMessage,
+    periodRecap: periodRecap,
+    noteWorkspaces: noteWorkspaces,
+    companion: companion,
     usualFor: usualFor,
     noteDismissal: noteDismissal,
     noteKept: noteKept,
@@ -1104,7 +1357,7 @@ if (typeof module !== "undefined" && module.exports) {
     // test hooks
     _setConfig: function(overrides) { cfg = clone(DEFAULTS); for (var k in overrides) cfg[k] = overrides[k]; return cfg },
     _lastMessageAt: function() { return lastMessageAt },
-    _state: function() { return { messagesSent: messagesSent, windowsOpened: windowsOpened, wsSwitches: wsSwitches } },
+    _state: function() { return { messagesSent: messagesSent, windowsOpened: windowsOpened, wsSwitches: wsSwitches, lastApp: lastApp } },
     _resetMemory: function() { memory = null },
     _memory: function() { return memory }
   }

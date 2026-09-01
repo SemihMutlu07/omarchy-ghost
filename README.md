@@ -2,38 +2,35 @@
 
 # 👻 Ghost
 
-**A little ghost that watches what you do on your Omarchy desktop — and
-whispers nice little messages. One-way. It never expects a reply.**
+**A tiny ghost in the corner of your Omarchy desktop. Sometimes it says boo.**
+
+That's it. It does not help. It does not want a reply. Click it and it goes away.
 
 ![preview](preview.png)
 
-*"[👻] Deep in the editor. I'll guard the door."*
+*"boo."*
 
 </div>
 
 ---
 
-Ghost lives in the bottom-right corner of your screen. It watches which apps
-you focus, which windows you open, which workspaces you hop between, what time
-it is, and — over time — *your habits*. When something is worth a word, a small
-bubble fades in, says its piece, and fades out. There is no reply box, no
-buttons. You can only shoo it away — and it *learns from that too*.
+Ghost lives in the bottom-right corner. While you look at a window, it
+occasionally peeks in — usually `boo.` — and fades out. Rarely it mentions
+a workspace that's been sitting open, or a weekly recap. No reply box.
+Click it and it goes away.
 
-Everything runs locally. No account, no cloud, no telemetry. The 14-day memory
-lives in `~/.local/state/omarchy/ghost/state.json`.
+Everything runs locally. 90 days of usage stay in
+`~/.local/state/omarchy/ghost/state.json`.
 
 ## Features
 
 | | |
 |---|---|
-| 👀 **Watches** | app focus, window open/close, workspace switches, fullscreen, theme changes, idle returns, terminal title changes |
-| 🧠 **Learns** | per-day-part habits ("Firefox at this hour? You're usually in the editor.") |
-| 📊 **Counts** | focus sessions, switch rhythm, deep-work minutes, peak hour, daily recap |
-| 🗣️ **Talks** | 60+ hand-written lines, de-duplicated, weighted per category |
-| 🤖 **Optional LLM brain** | `claude`/`ollama` generates one-liners from real context; templates as fallback |
-| 🤫 **Knows when to shut up** | idle, quiet hours (01–07), cooldowns, noise gates, daily budget |
-| 🚪 **Learns your dismissals** | shoo it away → that topic gets quieter |
-| 🔒 **100% local** | state file only; nothing leaves your machine |
+| 👻 **Vibes** | short deadpan lines. mostly `boo.` |
+| 📊 **Remembers** | app minutes, 90 days, daily / weekly / monthly recap |
+| 🪟 **Notices** | workspaces sitting open that you haven't looked at |
+| 🤫 **Quiet** | no focused window, quiet hours (01–07), cooldowns |
+| 🔒 **Local** | state file only. nothing leaves the machine |
 
 ## Install
 
@@ -51,12 +48,12 @@ Edit `~/.config/omarchy/ghost.json` (hot-reloads on save). All keys:
 ```jsonc
 {
   "enabled": true,
-  "minIntervalSec": 900,        // floor between messages
-  "maxIntervalSec": 3600,       // ambient whispers land in [min, max]
+  "minIntervalSec": 180,        // floor between messages
+  "maxIntervalSec": 720,        // ambient boo lands in [min, max]
   "variantCooldownSec": 1800,   // don't reuse a line within this window
   "quietHoursStart": 1,         // 01:00 …
   "quietHoursEnd": 7,           // … 07:00: ambient/focus/window/workspace go quiet
-  "idleSeconds": 600,           // no activity ⇒ Ghost assumes you're away
+  "idleSeconds": 600,           // no focused window this long = you're away
   "whisperDurationSec": 6,
   "brain": "templates",         // "templates" | "llm"
   "llmCommand": "",             // optional custom command (prompt appended)
@@ -83,6 +80,9 @@ unauthenticated, or missing. Engines tried in order: `$GHOST_LLM_COMMAND`,
 omarchy-shell semihmutlu.ghost whisper "boo 👻"
 omarchy-shell semihmutlu.ghost test      # fake theme-change message
 omarchy-shell semihmutlu.ghost digest    # yesterday's recap
+omarchy-shell semihmutlu.ghost week      # last 7 days
+omarchy-shell semihmutlu.ghost month     # this month so far
+omarchy-shell semihmutlu.ghost poke      # stale-workspace poke, now
 omarchy-shell semihmutlu.ghost insight   # a metric insight, right now
 omarchy-shell semihmutlu.ghost state     # the long-term memory
 omarchy-shell semihmutlu.ghost probe     # live window/workspace state
@@ -94,7 +94,7 @@ omarchy-shell semihmutlu.ghost probe     # live window/workspace state
 Ghost.qml         event wiring + the whisper bubble (Quickshell overlay)
 Brain.js          pure logic: cooldowns, quiet hours, templates, memory, insights
 bin/ghost-llm     optional LLM brain (stdin context JSON → one line out)
-test/brain.test.js  22 unit tests — node --test test/brain.test.js
+test/brain.test.js  unit tests — node --test test/brain.test.js
 state.json        long-term memory (~/.local/state/omarchy/ghost/)
 ```
 
@@ -105,7 +105,9 @@ state.json        long-term memory (~/.local/state/omarchy/ghost/)
 - **Brain** decides *whether* (cooldown, quiet hours, idle, noise gate, daily
   budget, dismissal weights) and *what* (de-duplicated weighted templates).
 - **Memory** accumulates minutes per category, focus sessions, per-day-part
-  counts, peak hour — shipped into 14 days of history on rollover.
+  counts, peak hour — shipped into 90 days of history on rollover. Weekly and
+  monthly recaps are computed from that. Occupied workspaces you ignore get a
+  rare poke.
 
 ## Customizing messages
 

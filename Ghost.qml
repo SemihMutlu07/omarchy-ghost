@@ -50,6 +50,8 @@ Item {
   property string lastWhisperKind: ""
   property double lastTickAt: Date.now()
   property string lastTitle: ""
+  property bool firstAmbient: true
+  property bool stateReady: false
 
   readonly property int bubblePad: 14
   readonly property int bubbleWidth: Math.min(360, Math.max(240, Number(root.cfg.maxWidth || 340)))
@@ -84,14 +86,16 @@ Item {
     printErrors: false
     onFileChanged: reload()
     onLoaded: root.onStateLoaded(text())
-    onLoadFailed: { /* first run: fresh memory */ }
+    onLoadFailed: { root.stateReady = true }
   }
 
   function onStateLoaded(raw) {
     Brain.loadState(raw)
+    root.stateReady = true
   }
 
   function persistState() {
+    if (!root.stateReady) return
     stateFile.setText(JSON.stringify(Brain.snapshotState(), null, 2) + "\n")
   }
 
@@ -212,6 +216,7 @@ Item {
     if (id === root.lastWorkspace) return
     root.lastWorkspace = id
     Brain.activity()
+    Brain.noteWorkspaces(root.workspaceSnapshot())
     var count = 0
     var vals = Hyprland.toplevels ? Hyprland.toplevels.values : []
     for (var i = 0; i < vals.length; i++) {
@@ -239,6 +244,12 @@ Item {
     root.tickFocus(t ? String(t.appId || "") : "")
     var digest = Brain.rolloverIfNeeded()
     if (digest !== "") root.maybeWhisper(digest)
+    else {
+      var recap = Brain.periodRecap()
+      if (recap !== "") root.maybeWhisper(recap)
+    }
+
+    Brain.noteWorkspaces(root.workspaceSnapshot())
 
     // Focused window title changed? Ghost notices (vim -> make test, etc.).
     var title = t ? String(t.title || "") : ""
@@ -248,9 +259,13 @@ Item {
       root.consider({ type: "title", class: app, title: title })
     }
 
-    // Idle detection — Ghost goes quiet when you are away.
-    if (now - Brain.lastActivity() > Number(root.cfg.idleSeconds || 600) * 1000)
+    // Presence is "a focused window", not "a focus-change event". Sitting
+    // still in one app is looking at the computer. Idle is only no window.
+    if (t) {
+      Brain.activity()
+    } else if (now - Brain.lastActivity() > Number(root.cfg.idleSeconds || 600) * 1000) {
       Brain.markIdle()
+    }
 
     // Theme fallback: if the FileView path-change missed the swap.
     var slug = root.themeSlug()
@@ -278,6 +293,48 @@ Item {
 
     // Persist the memory every heartbeat.
     root.persistState()
+
+    var poke = Brain.companion()
+    if (poke !== "") root.maybeWhisper(poke)
+  }
+
+  function workspaceSnapshot() {
+    var out = []
+    var vals = []
+    try { vals = Hyprland.workspaces.values } catch (e) { return out }
+    var focusedId = -1
+    try {
+      if (Hyprland.focusedWorkspace) focusedId = Number(Hyprland.focusedWorkspace.id)
+    } catch (e) { focusedId = -1 }
+    var i
+    for (i = 0; i < vals.length; i++) {
+      var ws = vals[i]
+      if (!ws) continue
+      var id = Number(ws.id)
+      var n = 0
+      var title = ""
+      try {
+        if (ws.toplevels && ws.toplevels.values) {
+          n = ws.toplevels.values.length
+          var tops = ws.toplevels.values
+          var j
+          for (j = 0; j < tops.length; j++) {
+            if (tops[j] && tops[j].title) {
+              title = String(tops[j].title)
+              break
+            }
+          }
+        }
+      } catch (e) { n = 0 }
+      out.push({
+        id: id,
+        name: String(ws.name || ""),
+        title: title,
+        windows: n,
+        focused: id === focusedId
+      })
+    }
+    return out
   }
 
   // ---------------------------------------------------------------- ambient
@@ -293,7 +350,13 @@ Item {
   }
 
   function scheduleAmbient() {
-    var next = Math.max(60000, Brain.nextAmbientMs())
+    var next
+    if (root.firstAmbient) {
+      root.firstAmbient = false
+      next = 15000 + Math.floor(Math.random() * 30000)
+    } else {
+      next = Math.max(60000, Brain.nextAmbientMs())
+    }
     ambientTimer.interval = next
     ambientTimer.start()
   }
@@ -515,6 +578,21 @@ Item {
       var msg = Brain.digestMessage(root.yesterdayDate())
       if (msg !== "") root.showWhisper(msg)
     }
+    function week(): string {
+      var msg = Brain.weekMessage({ force: true })
+      if (msg !== "") root.showWhisper(msg)
+      return msg || ""
+    }
+    function month(): string {
+      var msg = Brain.monthMessage({ force: true, current: true })
+      if (msg !== "") root.showWhisper(msg)
+      return msg || ""
+    }
+    function poke(): string {
+      var msg = Brain.companion(null, { force: true })
+      if (msg !== "") root.showWhisper(msg)
+      return msg || ""
+    }
     function insight(): void {
       var msg = Brain.insight()
       if (msg !== "") root.showWhisper(msg)
@@ -527,7 +605,8 @@ Item {
         activeTitle: t ? String(t.title || "") : "",
         toplevels: ToplevelManager.toplevels ? ToplevelManager.toplevels.values.length : -1,
         focusedWorkspace: Hyprland.focusedWorkspace ? Hyprland.focusedWorkspace.id : -1,
-        switchCount: Brain.snapshotState().switchCount
+        switchCount: Brain.snapshotState().switchCount,
+        workspaces: root.workspaceSnapshot()
       })
     }
   }
@@ -558,7 +637,6 @@ Item {
     id: mkdirProc
     running: false
     onExited: function() {
-      root.persistState()
       stateFile.reload()
     }
   }
