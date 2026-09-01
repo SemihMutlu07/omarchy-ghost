@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Ghost's optional LLM brain.
+#
+# Reads a context JSON blob on stdin (app, window titles, workspace, time,
+# activity counters — see Brain.js llmContext), and prints ONE short, warm,
+# playful whisper on stdout. Used by Ghost.qml when ghost.json sets
+# "brain": "llm" (or "auto"). Falls back to templates in QML if we exit
+# non-zero or print nothing.
+#
+# Engines tried, in order:
+#   1. $GHOST_LLM_COMMAND (if set — your own command, prompt appended)
+#   2. claude (Claude Code CLI, if installed and authenticated)
+#   3. ollama (local models, if installed)
+#
+# Every engine is wrapped in `timeout` so Ghost never hangs on a slow brain.
+
+set -euo pipefail
+
+CTX="$(cat)"
+[[ -n "$CTX" ]] || exit 1
+
+PROMPT="You are Ghost, a tiny friendly ghost living inside someone's Omarchy Linux desktop (a Hyprland setup). You watch what they do — apps they focus, windows they open, workspaces they hop between, the time of day — and you occasionally whisper ONE short, warm, playful, human little message. Requirements: at most 16 words; one line; no quotes around it; no markdown; no emoji spam (one ghost emoji at most); kind and encouraging, lightly mischievous but never mean; lowercase style is fine. Context (JSON): $CTX"
+
+run_claude() {
+  local out line
+  out="$(timeout 10 claude -p --output-format text "$PROMPT" 2>/dev/null || true)"
+  [[ -n "$out" ]] || return 1
+  # Filter setup noise (mise shim banners, login notices) from the answer.
+  while IFS= read -r line; do
+    case "$line" in
+      "" | mise\ ~* | *"Not logged in"*) continue ;;
+    esac
+    printf '%s\n' "$line"
+    return 0
+  done <<< "$out"
+  return 1
+}
+
+run_ollama() {
+  local model out
+  model="${GHOST_OLLAMA_MODEL:-llama3.2}"
+  out="$(timeout 10 ollama run "$model" "$PROMPT" 2>/dev/null || true)"
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out" | head -n1
+  return 0
+}
+
+run_custom() {
+  local out
+  out="$(timeout 10 bash -c "$GHOST_LLM_COMMAND -- \"$PROMPT\"" 2>/dev/null || true)"
+  [[ -n "$out" ]] || return 1
+  printf '%s\n' "$out" | head -n1
+  return 0
+}
+
+if [[ -n "${GHOST_LLM_COMMAND:-}" ]] && run_custom; then
+  exit 0
+fi
+
+if command -v claude >/dev/null 2>&1 && run_claude; then
+  exit 0
+fi
+
+if command -v ollama >/dev/null 2>&1 && run_ollama; then
+  exit 0
+fi
+
+exit 1
