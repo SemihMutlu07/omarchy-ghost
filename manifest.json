@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
   "id": "semihmutlu.ghost",
-  "name": "Ghost",
-  "version": "0.1.2",
+  "name": "ScreenBuddy",
+  "version": "0.2.0",
   "author": "Semih Mutlu",
   "license": "MIT",
-  "description": "A tiny ghost in the corner of your Omarchy desktop. Sometimes it says boo.",
+  "description": "A quiet buddy in the corner of your Omarchy desktop, occasionally ready-made comments in Semih's taste. Sometimes it says boo.",
   "kinds": ["overlay"],
   "keepLoaded": true,
   "entryPoints": {

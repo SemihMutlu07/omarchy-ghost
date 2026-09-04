@@ -1,8 +1,8 @@
 <div align="center">
 
-# 👻 Ghost
+# 🪟 ScreenBuddy
 
-**A tiny ghost in the corner of your Omarchy desktop. Sometimes it says boo.**
+**A quiet buddy in the corner of your Omarchy desktop. It notices what you do and sometimes says boo.**
 
 That's it. It does not help. It does not want a reply. Click it and it goes away.
 

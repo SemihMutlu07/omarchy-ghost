@@ -14,7 +14,7 @@ function freshConfig(overrides) {
     quietHoursStart: 12,
     quietHoursEnd: 12, // disabled
     idleSeconds: 600,
-    chances: { focus: 1, window: 1, workspace: 1, fullscreen: 1, longSession: 1, lateNight: 1, title: 1, unexpected: 1 }
+    chances: { focus: 1, window: 1, workspace: 1, fullscreen: 1, longSession: 1, lateNight: 1, title: 1, unexpected: 1, insight: 1 }
   }, overrides || {})
   Brain.resetMemory()
   return Brain._setConfig(cfg)
@@ -106,7 +106,7 @@ test("config parse merges and keeps defaults", () => {
   const cfg = Brain.parseConfig('{"minIntervalSec": 123, "chances": {"focus": 0.5}, "unknownKey": true}')
   assert.equal(cfg.minIntervalSec, 123)
   assert.equal(cfg.chances.focus, 0.5)
-  assert.equal(cfg.chances.window, 0.4, "untouched chance keeps default")
+  assert.equal(cfg.chances.window, 0.5, "untouched chance keeps default")
   assert.equal(cfg.enabled, true)
 })
 

@@ -24,15 +24,15 @@ var DEFAULTS = {
   llmCommand: "",             // optional override for the LLM brain
   maxWidth: 340,
   chances: {
-    focus: 0.12,              // on each app switch (only when calm)
-    window: 0.4,              // on each window open/close
-    workspace: 0.4,           // on each workspace switch (only when interesting)
-    fullscreen: 0.8,
-    longSession: 0.5,         // per hour of continuous activity
+    focus: 0.22,              // on each app switch (only when calm)
+    window: 0.5,              // on each window open/close
+    workspace: 0.5,           // on each workspace switch (only when interesting)
+    fullscreen: 0.85,
+    longSession: 0.6,         // per hour of continuous activity
     lateNight: 1.0,           // once per night
-    title: 0.5,               // on each focused-window title change
-    unexpected: 0.5,          // on habit deviations
-    insight: 0.6              // on each metric-based insight check
+    title: 0.6,               // on each focused-window title change
+    unexpected: 0.6,          // on habit deviations
+    insight: 0.7              // on each metric-based insight check
   },
   insightDailyCap: 6          // max metric insights per day (don't overdo it)
 }
@@ -245,134 +245,206 @@ function isIdle() { return idle }
 
 var T = {}
 
+// Semih's taste lives here. Dry, self-aware, sometimes a real quote from
+// the wall (Orhan Veli / Hamlet TR / NGE / Eternity and a Day). Mostly
+// lowercase, TR-for-comment + EN-for-dev-word, no em dash, no inspiration.
+
 T.browser = [
   "{app}.",
   "the browser.",
   "{app}. still.",
-  "tabs."
+  "tabs.",
+  "yine {app}.",
+  "{tabs} sekme.",
+  "{tabs} sekmeymiş.",
+  "kırk sekme. sanki bir iş.",
+  "{app}. sonsuz.",
+  "bir sekme daha. ok.",
+  "scrolly death."
 ]
 
 T.terminal = [
   "the terminal.",
   "this.",
   "{app}.",
-  "typing."
+  "typing.",
+  "ne yazıyorsan onu yaz.",
+  "{app}. komut.",
+  "sessiz ama çalışıyor.",
+  "ekranda dönen şey.",
+  "bu bitti mi?"
 ]
 
 T.editor = [
   "the editor.",
   "{app}.",
   "still writing.",
-  "the cursor."
+  "the cursor.",
+  "cursor. imleç.",
+  "{app}. bir satır daha.",
+  "yazıyorsun. bildiğim.",
+  "kaydet. ne olursa olsun.",
+  "tekrar yaz. daha iyi."
 ]
 
 T.vim = [
   "vim.",
   "esc.",
-  "vim. still."
+  "vim. still.",
+  ":w.",
+  "normal mode. orada dur."
 ]
 
 T.music = [
   "{app}.",
   "music.",
-  "this song."
+  "this song.",
+  "bu çalarken.",
+  "tek şarkı. bu an.",
+  "{app}. sesi aç.",
+  "şarkı bitince."
 ]
 
 T.chat = [
   "{app}.",
   "people.",
-  "chat."
+  "chat.",
+  "birileri yazıyor.",
+  "{app}. dünya.",
+  "mesaj geldi. belki.",
+  "sohbet."
 ]
 
 T.games = [
   "{app}.",
   "game.",
-  "loading."
+  "loading.",
+  "bir tur daha.",
+  "{app}. kaçış.",
+  "kaydetmeden çıkma."
 ]
 
 T.video = [
   "{app}.",
   "movie.",
-  "shh."
+  "shh.",
+  "sessiz. film.",
+  "bir sahne daha.",
+  "{app}."
 ]
 
 T.design = [
   "{app}.",
   "pixels.",
-  "designing."
+  "designing.",
+  "piksel piksel.",
+  "{app}. renk.",
+  "kaydır. yeter."
 ]
 
 T.files = [
   "{app}.",
   "files.",
-  "sorting."
+  "sorting.",
+  "dosyalar. hep orada.",
+  "bir kalsın. ya.",
+  "{app}. arama."
 ]
 
 T.focusFallback = [
   "{app}.",
   "{app}. ok.",
-  "you and {app}."
+  "you and {app}.",
+  "sen ve {app}.",
+  "{app}. demek.",
+  "{app}. şimdilik."
 ]
 
 T["window-open"] = [
   "a window.",
   "another one. {count} today.",
-  "window."
+  "window.",
+  "bir pencere daha. {count}.",
+  "aç. kapanmaz.",
+  "{count}. bugün."
 ]
 
 T["window-close"] = [
   "gone.",
   "closed.",
-  "one less."
+  "one less.",
+  "kapandı.",
+  "biri daha gitti.",
+  "temiz."
 ]
 
 T.workspace = [
   "workspace {ws}. {windows:window}.",
   "{ws}.",
-  "{windows:window} on {ws}."
+  "{windows:window} on {ws}.",
+  "{ws}. burada."
 ]
 
 T.home = [
   "home.",
-  "workspace 1."
+  "workspace 1.",
+  "ev. 1.",
+  "ana ekran."
 ]
 
 T.fullscreen = [
   "fullscreen.",
   "big.",
-  "ok. fullscreen."
+  "ok. fullscreen.",
+  "tam ekran. dünya küçüldü.",
+  "büyük ekran. konsantre."
 ]
 
 T.theme = [
   "{theme}.",
   "new colours. {theme}.",
-  "{theme}. ok."
+  "{theme}. ok.",
+  "{theme}. boyadın."
 ]
 
 T.morning = [
   "morning.",
   "hi.",
-  "you again."
+  "you again.",
+  "günaydın.",
+  "yine biz.",
+  "sabah. başladı."
 ]
 
 T["late-night"] = [
   "{time} AM.",
   "still up.",
   "late.",
-  "{time} AM. just us."
+  "{time} AM. just us.",
+  "{time} AM. hâlâ buradasın.",
+  "gece. sadece biz.",
+  "uyku da bir şey.",
+  "Bilmezler yalnız yaşamıyanlar, nasıl korku verir sessizlik insana."
 ]
 
 T["welcome-back"] = [
   "you're back.",
   "hi.",
   "boo.",
-  "still here."
+  "still here.",
+  "döndün. bekliyordum.",
+  "boo. buradayım.",
+  "geri geldin."
 ]
 
 T["long-session"] = [
   "{hours} hours.",
   "still going. {hours} hours.",
-  "{hours} hours in."
+  "{hours} hours in.",
+  "{hours} saat. devam.",
+  "otur. kalk. {hours} saat.",
+  "kalk artık. {hours} saat oldu.",
+  "{hours} saat. mola."
 ]
 
 T.ambient = [
@@ -382,42 +454,66 @@ T.ambient = [
   "hi.",
   ".",
   "{windows:window}.",
-  "{minutes} minutes in {app}."
+  "{minutes} minutes in {app}.",
+  "boo. düşünüyorum.",
+  "bir şey söyleyecektim. unuttum.",
+  "o pencere hâlâ açık.",
+  "sessizce varım.",
+  "{app} yapıyorsun. gördüm.",
+  "Bir dakikanı almayacağım.",
+  "Bilinç böyle korkak ediyor hepimizi.",
+  "Bilmemek ve hayal etmek daha iyi.",
+  "Kişiliğini insanlardan aldığın övgüler ile oluşturuyorsun."
 ]
 
 T.unexpected = [
   "{app}? usually {usual}.",
   "{app} instead of {usual}.",
-  "{app}. not {usual}."
+  "{app}. not {usual}.",
+  "{usual} yerine {app}?",
+  "bugün {app}. değişiklik."
 ]
 
 T.digest = [
   "yesterday: {summary}. {opens:window}.",
   "{summary}. that was yesterday.",
-  "yesterday was {summary}."
+  "yesterday was {summary}.",
+  "dün: {summary}.",
+  "{summary}. bir gün daha."
 ]
 
 T.week = [
   "this week: {summary}.",
-  "{days} days. {summary}."
+  "{days} days. {summary}.",
+  "bu hafta: {summary}.",
+  "{days} gün. {summary}.",
+  "hafta bitti: {summary}."
 ]
 
 T.month = [
   "{month}: {summary}.",
-  "this month: {summary}."
+  "this month: {summary}.",
+  "bu ay: {summary}.",
+  "{month}. {summary}.",
+  "ay bitti: {summary}."
 ]
 
 T.stale = [
   "{n} open.",
   "{name} is still there.",
   "{stale} of {n} sitting.",
-  "{name}."
+  "{name}.",
+  "{name} hâlâ açık.",
+  "sen yokken {name} bekliyor.",
+  "{name}. unuttun galiba."
 ]
 
 T["title-change"] = [
   "{title}.",
   "now: {title}.",
-  "{title}."
+  "{title}.",
+  "şimdi: {title}.",
+  "yeni başlık. {title}."
 ]
 
 // -------------------------------------------------------------- generation
@@ -1177,22 +1273,30 @@ function weightFor(key) {
 T.stretch = [
   "{minutes} minutes in {app}.",
   "{minutes} minutes. {app}.",
-  "{app}. {minutes} minutes."
+  "{app}. {minutes} minutes.",
+  "{minutes} dakika {app}.",
+  "{app}. {minutes} dakika. kalk."
 ]
 
 T.rhythm = [
   "{a} → {b} → {a} → {b}. every {minutes} minutes.",
-  "{a} and {b}. every {minutes} minutes."
+  "{a} and {b}. every {minutes} minutes.",
+  "{a} ↔ {b}. {minutes} dakikada bir.",
+  "ritim: {a} {b} {a} {b}. {minutes} dk."
 ]
 
 T.deep = [
   "{hours} hours.",
-  "{hours} hours in."
+  "{hours} hours in.",
+  "deep. {hours} saat.",
+  "{hours} saat. derin mi?"
 ]
 
 T.peak = [
   "{time}.",
-  "this hour. {time}."
+  "this hour. {time}.",
+  "olan saat. {time}.",
+  "en aktif saatin. {time}."
 ]
 
 function insight() {
