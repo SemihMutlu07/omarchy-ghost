@@ -69,10 +69,40 @@ Edit `~/.config/omarchy/ghost.json` (hot-reloads on save). All keys:
 
 ### LLM brain
 
-With `"brain": "llm"`, Ghost hands the event context to `bin/ghost-llm` and
-uses its one-line answer, falling back to templates when the model is slow,
-unauthenticated, or missing. Engines tried in order: `$GHOST_LLM_COMMAND`,
-`claude -p`, `ollama` (`GHOST_OLLAMA_MODEL`, default `llama3.2`).
+Set `"brain": "llm"` in `ghost.json` to turn the smart brain on. Ghost pipes
+the event context into `bin/ghost-llm` and whispers its one-line answer; if the
+model is slow, unauthenticated, or missing, it falls back to templates.
+
+Engines are tried in order:
+
+1. **`$GHOST_LLM_COMMAND`** — your own command (the prompt is appended). Use
+   this to plug in **DeepSeek**, Gemini, or any other endpoint.
+2. **`claude -p`** — Claude Code CLI (installed and logged in).
+3. **`ollama`** — local models (`GHOST_OLLAMA_MODEL`, default `llama3.2`).
+
+**Run with DeepSeek** — point `$GHOST_LLM_COMMAND` at a tiny wrapper that
+takes the prompt as its last argument and prints one line:
+
+```sh
+# ~/.local/bin/ghost-deepseek  (chmod +x)
+#!/usr/bin/env python3
+import os, sys, json, urllib.request
+req = urllib.request.Request(
+    "https://api.deepseek.com/chat/completions",
+    data=json.dumps({"model": "deepseek-chat",
+        "messages": [{"role": "user", "content": sys.argv[1]}],
+        "max_tokens": 90}).encode(),
+    headers={"Authorization": "Bearer " + os.environ["DEEPSEEK_API_KEY"],
+             "Content-Type": "application/json"})
+print(json.load(urllib.request.urlopen(req))["choices"][0]["message"]["content"].strip())
+```
+
+```sh
+export DEEPSEEK_API_KEY="sk-..."
+export GHOST_LLM_COMMAND="$HOME/.local/bin/ghost-deepseek"
+```
+
+Save `ghost.json` and it hot-reloads.
 
 ## Manual testing
 
