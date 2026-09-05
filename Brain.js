@@ -287,7 +287,8 @@ T.editor = [
   "yazıyorsun. bildiğim.",
   "kaydet. ne olursa olsun.",
   "yine overengineer ediyorsun, farkındayım.",
-  "loop'a girdin. (işe yararsa iyi)."
+  "loop'a girdin. (işe yararsa iyi).",
+  "burayı 'sonra bakarım' diye bıraktın."
 ]
 
 T.vim = [
@@ -305,7 +306,9 @@ T.music = [
   "bu çalarken.",
   "tek şarkı. bu an.",
   "{app}. sesi aç.",
-  "şarkı bitince."
+  "şarkı bitince.",
+  "pyramid song 2:10. bekliyorum.",
+  "şarkı değil, içindeki an."
 ]
 
 T.chat = [
@@ -333,7 +336,10 @@ T.video = [
   "shh.",
   "sessiz. film.",
   "bir sahne daha.",
-  "{app}."
+  "{app}.",
+  "anlamam için analiz mi okumam lazım. salak gibi hissediyorum.",
+  "teknik güzel ama sevmek başka.",
+  "tek sahne, tek şarkı. o an."
 ]
 
 T.design = [
@@ -435,7 +441,8 @@ T["welcome-back"] = [
   "boo.",
   "still here.",
   "boo. buradayım.",
-  "geri geldin."
+  "geri geldin.",
+  "dün de aynı yerdeydin."
 ]
 
 T["long-session"] = [
