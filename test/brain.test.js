@@ -106,7 +106,7 @@ test("config parse merges and keeps defaults", () => {
   const cfg = Brain.parseConfig('{"minIntervalSec": 123, "chances": {"focus": 0.5}, "unknownKey": true}')
   assert.equal(cfg.minIntervalSec, 123)
   assert.equal(cfg.chances.focus, 0.5)
-  assert.equal(cfg.chances.window, 0.5, "untouched chance keeps default")
+  assert.equal(cfg.chances.window, 0.4, "untouched chance keeps default")
   assert.equal(cfg.enabled, true)
 })
 

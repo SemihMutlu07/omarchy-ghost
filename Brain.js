@@ -24,15 +24,15 @@ var DEFAULTS = {
   llmCommand: "",             // optional override for the LLM brain
   maxWidth: 340,
   chances: {
-    focus: 0.22,              // on each app switch (only when calm)
-    window: 0.5,              // on each window open/close
-    workspace: 0.5,           // on each workspace switch (only when interesting)
-    fullscreen: 0.85,
-    longSession: 0.6,         // per hour of continuous activity
+    focus: 0.12,              // on each app switch (only when calm)
+    window: 0.4,              // on each window open/close
+    workspace: 0.4,           // on each workspace switch (only when interesting)
+    fullscreen: 0.8,
+    longSession: 0.5,         // per hour of continuous activity
     lateNight: 1.0,           // once per night
-    title: 0.6,               // on each focused-window title change
-    unexpected: 0.6,          // on habit deviations
-    insight: 0.7              // on each metric-based insight check
+    title: 0.5,               // on each focused-window title change
+    unexpected: 0.5,          // on habit deviations
+    insight: 0.6              // on each metric-based insight check
   },
   insightDailyCap: 6          // max metric insights per day (don't overdo it)
 }
@@ -258,6 +258,7 @@ T.browser = [
   "{tabs} sekme.",
   "{tabs} sekmeymiş.",
   "kırk sekme. sanki bir iş.",
+  "kırk sekme açık. hiçbirini okumayacaksın.",
   "{app}. sonsuz.",
   "bir sekme daha. ok.",
   "scrolly death."
@@ -272,7 +273,8 @@ T.terminal = [
   "{app}. komut.",
   "sessiz ama çalışıyor.",
   "ekranda dönen şey.",
-  "bu bitti mi?"
+  "bu bitti mi?",
+  "state şişti. bi restart paklar."
 ]
 
 T.editor = [
@@ -284,7 +286,8 @@ T.editor = [
   "{app}. bir satır daha.",
   "yazıyorsun. bildiğim.",
   "kaydet. ne olursa olsun.",
-  "tekrar yaz. daha iyi."
+  "yine overengineer ediyorsun, farkındayım.",
+  "loop'a girdin. (işe yararsa iyi)."
 ]
 
 T.vim = [
@@ -396,8 +399,7 @@ T.fullscreen = [
   "fullscreen.",
   "big.",
   "ok. fullscreen.",
-  "tam ekran. dünya küçüldü.",
-  "büyük ekran. konsantre."
+  "tam ekran."
 ]
 
 T.theme = [
@@ -422,9 +424,9 @@ T["late-night"] = [
   "late.",
   "{time} AM. just us.",
   "{time} AM. hâlâ buradasın.",
-  "gece. sadece biz.",
   "uyku da bir şey.",
-  "Bilmezler yalnız yaşamıyanlar, nasıl korku verir sessizlik insana."
+  "bilmezler yalnız yaşamıyanlar, nasıl korku verir sessizlik insana.",
+  "bilinç böyle korkak ediyor hepimizi."
 ]
 
 T["welcome-back"] = [
@@ -432,7 +434,6 @@ T["welcome-back"] = [
   "hi.",
   "boo.",
   "still here.",
-  "döndün. bekliyordum.",
   "boo. buradayım.",
   "geri geldin."
 ]
@@ -444,7 +445,8 @@ T["long-session"] = [
   "{hours} saat. devam.",
   "otur. kalk. {hours} saat.",
   "kalk artık. {hours} saat oldu.",
-  "{hours} saat. mola."
+  "{hours} saat. mola.",
+  "kişiliğini insanlardan aldığın övgüler ile oluşturuyorsun."
 ]
 
 T.ambient = [
@@ -455,15 +457,9 @@ T.ambient = [
   ".",
   "{windows:window}.",
   "{minutes} minutes in {app}.",
-  "boo. düşünüyorum.",
   "bir şey söyleyecektim. unuttum.",
   "o pencere hâlâ açık.",
-  "sessizce varım.",
-  "{app} yapıyorsun. gördüm.",
-  "Bir dakikanı almayacağım.",
-  "Bilinç böyle korkak ediyor hepimizi.",
-  "Bilmemek ve hayal etmek daha iyi.",
-  "Kişiliğini insanlardan aldığın övgüler ile oluşturuyorsun."
+  "bilmemek ve hayal etmek daha iyi."
 ]
 
 T.unexpected = [
@@ -1295,7 +1291,6 @@ T.deep = [
 T.peak = [
   "{time}.",
   "this hour. {time}.",
-  "olan saat. {time}.",
   "en aktif saatin. {time}."
 ]
 
