@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+# Casper command-finished hook for Ghostty + interactive Bash.
+#
+# Source it from ~/.bashrc, after Starship and after the Herdr rename hook.
+# This file never runs anything on its own.
+#
+# Non-destructive by contract:
+#   * PS0 is APPENDED to, never replaced. Starship owns PS0 here
+#     (${STARSHIP_START_TIME:...}); we only add our own "${ ... ; }" clause,
+#     which Bash 5.3 evaluates in the current shell.
+#   * PROMPT_COMMAND gets exactly one PREPENDED entry, so it still sees the
+#     exit status of the command the user just ran, and returns it unchanged
+#     for the entries that follow (starship_precmd, Herdr's wrap).
+#   * No DEBUG trap is installed. The Herdr automatic-rename hook owns
+#     `trap DEBUG` on this machine; stealing it would break tab renaming.
+#
+# Privacy: the last history entry is read locally only to derive one allowlisted
+# family and subcommand, then discarded. Nothing but family, subcommand, exit
+# status, duration and an ephemeral session id ever leaves this file.
+#
+# Fail-closed: anything unexpected (compound command, redirection, quoting,
+# unknown binary, missing history entry, Bash < 5.3) produces no event.
+
+# Interactive shells only, and only in a real terminal emulator: Ghostty first,
+# plus the other terminals in daily use here (kitty today; foot/wezterm/alacritty
+# tolerated). Non-interactive shells and scripts never activate.
+#   CASPER_FORCE=1  install regardless of the terminal
+#   CASPER_FORCE=0  never install
+[[ $- == *i* ]] || return 0 2>/dev/null || exit 0
+if [[ ${CASPER_FORCE:-} == 0 ]]; then
+  return 0 2>/dev/null || exit 0
+fi
+if [[ ${CASPER_FORCE:-} != 1 ]]; then
+  __casper_terminal_ok=0
+  if [[ -n ${GHOSTTY_RESOURCES_DIR:-} || -n ${KITTY_WINDOW_ID:-} || -n ${WEZTERM_PANE:-} ]]; then
+    __casper_terminal_ok=1
+  else
+    case "${TERM_PROGRAM:-}:${TERM:-}" in
+      *ghostty*|*kitty*|*foot*|*wezterm*|*WezTerm*|*alacritty*) __casper_terminal_ok=1 ;;
+    esac
+  fi
+  if [[ $__casper_terminal_ok != 1 ]]; then
+    unset __casper_terminal_ok
+    return 0 2>/dev/null || exit 0
+  fi
+  unset __casper_terminal_ok
+fi
+[[ -z ${CASPER_HOOK_ACTIVE:-} ]] || return 0 2>/dev/null || exit 0
+[[ ${BASH_VERSINFO[0]:-0} -gt 5 || ( ${BASH_VERSINFO[0]:-0} -eq 5 && ${BASH_VERSINFO[1]:-0} -ge 3 ) ]] ||
+  return 0 2>/dev/null || exit 0
+
+CASPER_CONFIG=${CASPER_CONFIG:-$HOME/.config/omarchy/casper.json}
+
+__casper_config_number() { # $1 key, $2 fallback
+  local value
+  value=$(sed -n "s/.*\"$1\"[[:space:]]*:[[:space:]]*\([0-9]\{1,9\}\).*/\1/p" "$CASPER_CONFIG" 2>/dev/null | head -n1)
+  printf '%s' "${value:-$2}"
+}
+
+# Always install: the overlay applies enabled/silence dynamically.
+# Otherwise enabling Casper later leaves this shell permanently disconnected.
+
+CASPER_HOOK_ACTIVE=1
+CASPER_SESSION_ID=${CASPER_SESSION_ID:-casper_${BASHPID:-$$}_${RANDOM}}
+CASPER_MIN_MS=$(__casper_config_number minDurationMs 2500)
+CASPER_STARTED_US=0
+CASPER_LAST_HIST=0
+declare -A CASPER_FAILED=()
+
+# Opt-in trace for debugging a surprising (or missing) comment.
+#   CASPER_DEBUG=1  ->  /tmp/casper-hook.log (or $CASPER_DEBUG_LOG)
+__casper_trace() { [[ -n ${CASPER_DEBUG:-} ]] || return 0; printf '%s\n' "$*" >> "${CASPER_DEBUG_LOG:-/tmp/casper-hook.log}"; }
+
+__casper_preexec() { CASPER_STARTED_US=${EPOCHREALTIME//./}; }
+
+# Allowlist: family -> accepted subcommands. Mirrors Brain.js FAMILIES;
+# test/brain.test.js fails if the two drift.
+__casper_classify() { # $1 raw command line -> sets CASPER_FAMILY/CASPER_SUBCOMMAND
+  CASPER_FAMILY= CASPER_SUBCOMMAND=
+  local raw=$1 words family sub
+  [[ -n $raw && ${#raw} -le 240 ]] || return 1
+  [[ $raw != *[\|\&\;\<\>\(\)\`\'\"\\\$]* && $raw != *$'\n'* ]] || return 1
+  read -r -a words <<< "$raw"
+  (( ${#words[@]} >= 1 )) || return 1
+  family=${words[0]##*/}
+  sub=${words[1]-}
+  # Ignore arguments; transmit only a known subcommand or the known family.
+  case "$family" in
+    make|node|python|python3|pytest|rg|ls|sleep|true|false) sub= ;;
+  esac
+  case "$family:$sub" in
+    git:|git:status|git:diff|git:log|git:show|git:pull|git:push|git:commit|git:add|git:checkout|git:branch|git:test) ;;
+    npm:|npm:test|npm:run|npm:install|npm:build|npm:start) ;;
+    pnpm:|pnpm:test|pnpm:run|pnpm:install|pnpm:build|pnpm:start) ;;
+    yarn:|yarn:test|yarn:run|yarn:install|yarn:build|yarn:start) ;;
+    cargo:|cargo:test|cargo:build|cargo:check|cargo:run|cargo:clippy) ;;
+    make:) ;;
+    go:|go:test|go:build|go:run|go:fmt|go:vet) ;;
+    node:|python:|python3:|pytest:|rg:|ls:|sleep:|true:|false:) ;;
+    bun:|bun:test|bun:run|bun:install|bun:build) ;;
+    docker:|docker:build|docker:run|docker:compose) ;;
+    systemctl:|systemctl:start|systemctl:stop|systemctl:restart|systemctl:status) ;;
+    omarchy:|omarchy:restart|omarchy:theme|omarchy:plugin|omarchy:update|omarchy:refresh) ;;
+    *) return 1 ;;
+  esac
+  CASPER_FAMILY=$family
+  CASPER_SUBCOMMAND=$sub
+  return 0
+}
+
+__casper_precmd() {
+  local status=$? raw hist num duration json
+  local started=$CASPER_STARTED_US
+  CASPER_STARTED_US=0
+
+  hist=$(HISTTIMEFORMAT= builtin history 1 2>/dev/null) || hist=
+  __casper_trace "precmd status=$status started=$started"
+  hist=${hist#"${hist%%[![:space:]]*}"}
+  num=${hist%% *}
+  raw=${hist#* }
+  [[ $num =~ ^[0-9]+$ ]] || return "$status"
+  # Unrecorded command (leading space, HISTCONTROL) => no new entry => nothing
+  # to attribute, so stay silent instead of re-reporting the previous command.
+  (( num > CASPER_LAST_HIST )) || return "$status"
+  CASPER_LAST_HIST=$num
+  __casper_classify "$raw" || { __casper_trace "skip unclassified status=$status"; return "$status"; }
+
+  duration=$(( (${EPOCHREALTIME//./} - started) / 1000 ))
+  (( duration < 0 )) && duration=0
+  (( duration > 999999999 )) && duration=999999999
+
+  if (( status != 0 )); then
+    (( status < 128 )) || return "$status"   # signals and Ctrl-C: silent
+    CASPER_FAILED[$CASPER_FAMILY]=1
+  elif [[ -n ${CASPER_FAILED[$CASPER_FAMILY]:-} ]]; then
+    unset 'CASPER_FAILED[$CASPER_FAMILY]'     # candidate recovery
+  else
+    (( duration >= CASPER_MIN_MS )) || { __casper_trace "skip slow-below-threshold duration=$duration"; return "$status"; }
+  fi
+
+  json=$(printf '{"family":"%s","subcommand":"%s","code":%s,"durationMs":%s,"session":"%s"}' \
+    "$CASPER_FAMILY" "$CASPER_SUBCOMMAND" "$status" "$duration" "$CASPER_SESSION_ID")
+  __casper_trace "emit $json"
+  command omarchy-shell -q semihmutlu.ghost commandFinished "$json" >/dev/null 2>&1 || true
+  return "$status"
+}
+
+PS0="${PS0-}"'${ __casper_preexec; }'
+if declare -p PROMPT_COMMAND 2>/dev/null | grep -q 'declare -a'; then
+  PROMPT_COMMAND=(__casper_precmd "${PROMPT_COMMAND[@]}")
+else
+  PROMPT_COMMAND="__casper_precmd"$'\n'"${PROMPT_COMMAND-}"
+fi

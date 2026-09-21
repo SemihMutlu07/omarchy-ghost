@@ -1,155 +1,188 @@
-<div align="center">
+# Casper
 
-# 🪟 ScreenBuddy
+A small, characterful, **controllable** terminal companion for Omarchy.
 
-**A quiet buddy in the corner of your Omarchy desktop. It notices what you do and sometimes says boo.**
+Casper lives in the bottom-right corner and occasionally says one short line
+when a command finishes. It is deterministic and local: no model, no network,
+no telemetry. Its most important feature is knowing when to shut up.
 
-That's it. It does not help. It does not want a reply. Click it and it goes away.
+```
+Ghostty (interactive Bash)
+        │  PS0 + PROMPT_COMMAND
+        ▼
+bin/casper-hook          allowlist → family, subcommand, exit status, duration
+        │  omarchy-shell -q semihmutlu.ghost commandFinished '<json>'
+        ▼
+Ghost.qml (overlay)  ──►  Brain.js   classify → dosage → tone → one line
+        │
+        ▼
+bottom-right bubble  ·  👻 bar icon opens the settings panel
+```
 
-![preview](preview.png)
+Casper does not observe your desktop. No window titles, workspaces, themes,
+clipboard, cwd, git state, or command output. It only reacts to finished
+commands.
 
-*"boo."*
+## What it talks about
 
-</div>
-
----
-
-Ghost lives in the bottom-right corner. While you look at a window, it
-occasionally peeks in — usually `boo.` — and fades out. Rarely it mentions
-a workspace that's been sitting open, or a weekly recap. No reply box.
-Click it and it goes away.
-
-Everything runs locally. 90 days of usage stay in
-`~/.local/state/omarchy/ghost/state.json`.
-
-## Features
-
-| | |
+| Event | When it can speak |
 |---|---|
-| 👻 **Vibes** | short deadpan lines. mostly `boo.` |
-| 📊 **Remembers** | app minutes, 90 days, daily / weekly / monthly recap |
-| 🪟 **Notices** | workspaces sitting open that you haven't looked at |
-| 🤫 **Quiet** | no focused window, quiet hours (01–07), cooldowns |
-| 🔒 **Local** | state file only. nothing leaves the machine |
+| `failure` | a command exits non-zero (Ctrl-C and signal exits stay silent) |
+| `recovery` | the same command family finally succeeds again in the same shell, within 15 min |
+| `slow` | a success that took longer than `minDurationMs` (default 2.5s) |
+
+Three failures in a row in the same family sharpen into a "this is a pattern"
+line. Everything else is deliberately silent: `git status` succeeding twenty
+times is not interesting and Casper never comments on it.
 
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/SemihMutlu07/omarchy-ghost.git --enable
+# 1. the plugin (overlay bubble + bar icon + settings panel)
+cp Ghost.qml BarWidget.qml Panel.qml Brain.js manifest.json \
+   ~/.config/omarchy/plugins/semihmutlu.ghost/
+cp bin/casper-hook ~/.config/omarchy/plugins/semihmutlu.ghost/bin/ && chmod +x ~/.config/omarchy/plugins/semihmutlu.ghost/bin/casper-hook
+
+# 2. place the bar icon
+#    A plugin that was previously registered only as an overlay lives in
+#    shell.json's plugins[]; that entry makes the widget placement a no-op.
+#    Disable and re-enable it once so the bar entry is created.
+omarchy plugin disable semihmutlu.ghost
+omarchy plugin enable  semihmutlu.ghost --section right
+
+# 3. the shell hook, sourced from ~/.bashrc in real terminals only
+printf '\n# Casper companion\n[ -r "$HOME/.config/omarchy/plugins/semihmutlu.ghost/bin/casper-hook" ] && source "$HOME/.config/omarchy/plugins/semihmutlu.ghost/bin/casper-hook"\n' >> ~/.bashrc
+
+# 4. a keep-loaded overlay is NOT re-created by rescanPlugins: restart the shell
+omarchy restart shell
 ```
 
-No restart needed — the shell hot-reloads. First run writes
-`~/.config/omarchy/ghost.json` with defaults.
+Then open a **new** terminal window (or `source ~/.bashrc` in an existing one).
+
+`omarchy-shell shell rescanPlugins` alone reloads panels and bar widgets but
+leaves an already-running overlay on its old code — restart the shell after
+touching `Ghost.qml` or `Brain.js`. Editing `casper.json` needs no restart.
+
+## Uninstall / rollback
+
+```sh
+# remove the two lines the installer appended to ~/.bashrc, then
+git -C ~/.config/omarchy/plugins/semihmutlu.ghost checkout -- .   # or delete the folder
+omarchy-shell shell rescanPlugins
+```
+
+Nothing else is touched: no systemd unit, no daemon, no system config, and no
+second process. The overlay and the panel run inside the shell you already have.
 
 ## Configure
 
-Edit `~/.config/omarchy/ghost.json` (hot-reloads on save). All keys:
+The panel is the interface: click 👻 in the bar. It edits
+`~/.config/omarchy/casper.json`, which the overlay watches — changes apply to
+the next command, no restart.
 
 ```jsonc
 {
   "enabled": true,
-  "minIntervalSec": 180,        // floor between messages
-  "maxIntervalSec": 720,        // ambient boo lands in [min, max]
-  "variantCooldownSec": 1800,   // don't reuse a line within this window
-  "quietHoursStart": 1,         // 01:00 …
-  "quietHoursEnd": 7,           // … 07:00: ambient/focus/window/workspace go quiet
-  "idleSeconds": 600,           // no focused window this long = you're away
-  "whisperDurationSec": 6,
-  "brain": "templates",         // "templates" | "llm"
-  "llmCommand": "",             // optional custom command (prompt appended)
-  "maxWidth": 340,
-  "insightDailyCap": 6,         // max metric insights per day
-  "chances": {                  // per-event likelihood (0–1)
-    "focus": 0.12, "window": 0.4, "workspace": 0.4,
-    "fullscreen": 0.8, "longSession": 0.5, "lateNight": 1.0,
-    "title": 0.5, "unexpected": 0.5, "insight": 0.6
-  }
+  "mode": "Balanced",        // Quiet | Balanced | Chatty — sets cooldown, hourly cap, rates
+  "silenceUntil": 0,         // epoch ms; the panel sets it to now + 1h
+  "cooldownSec": 90,         // floor between two comments
+  "budgetPerHour": 8,        // hard hourly ceiling
+  "minDurationMs": 2500,     // "long command" threshold
+  "failureWindowMs": 900000, // how long a failure stays "recoverable"
+  "maxSessions": 24,         // bounded number of tracked shells
+  "triggers": { "failure": true, "recovery": true, "slow": true },
+  "rates": { "failure": 1, "recovery": 0.8, "slow": 0.5 }, // 0–1 chance per event
+  "sarcasm": 0.55,
+  "technical": 0.5,
+  "verbosity": 0.45,
+  "profanity": false
 }
 ```
 
-### LLM brain
+Every value is optional; anything absent falls back to the mode preset and
+then to the defaults above. The panel writes the whole object back, so editing
+by hand is fine too.
 
-Set `"brain": "llm"` in `ghost.json` to turn the smart brain on. Ghost pipes
-the event context into `bin/ghost-llm` and whispers its one-line answer; if the
-model is slow, unauthenticated, or missing, it falls back to templates.
+## Privacy
 
-Engines are tried in order:
+The hook is an allowlist, not a logger.
 
-1. **`$GHOST_LLM_COMMAND`** — your own command (the prompt is appended). Use
-   this to plug in **DeepSeek**, Gemini, or any other endpoint.
-2. **`claude -p`** — Claude Code CLI (installed and logged in).
-3. **`ollama`** — local models (`GHOST_OLLAMA_MODEL`, default `llama3.2`).
+* It looks at the command line **locally** only to extract one allowlisted
+  family and one allowlisted subcommand, then throws the line away.
+* The only thing that leaves the hook is
+  `{family, subcommand, code, durationMs, session}` — no arguments, no
+  output, no cwd, no secrets, no history file.
+* Commands with pipes, redirections, quotes, substitutions or more than two
+  words are rejected outright.
+* `session` is an ephemeral `casper_<pid>_<random>` id, valid for that shell
+  only. It is never written to disk.
+* Memory lives inside the running shell process and is bounded by
+  `maxSessions` + `failureWindowMs`. Nothing is persisted but your config.
+* The overlay never reads windows, titles, workspaces, themes or the clipboard.
+* `bin/ghost-llm` from the previous ScreenBuddy version is still in the repo and
+  deliberately unreachable: no code path calls it. LLM support is a later step
+  with an explicit, minimal, user-inspectable context.
 
-**Run with DeepSeek** — point `$GHOST_LLM_COMMAND` at a tiny wrapper that
-takes the prompt as its last argument and prints one line:
+## Coexisting with the rest of your shell
 
-```sh
-# ~/.local/bin/ghost-deepseek  (chmod +x)
-#!/usr/bin/env python3
-import os, sys, json, urllib.request
-req = urllib.request.Request(
-    "https://api.deepseek.com/chat/completions",
-    data=json.dumps({"model": "deepseek-chat",
-        "messages": [{"role": "user", "content": sys.argv[1]}],
-        "max_tokens": 90}).encode(),
-    headers={"Authorization": "Bearer " + os.environ["DEEPSEEK_API_KEY"],
-             "Content-Type": "application/json"})
-print(json.load(urllib.request.urlopen(req))["choices"][0]["message"]["content"].strip())
-```
+The hook is written to be invisible to other tools:
 
-```sh
-export DEEPSEEK_API_KEY="sk-..."
-export GHOST_LLM_COMMAND="$HOME/.local/bin/ghost-deepseek"
-```
+| Owned by | Treatment |
+|---|---|
+| `PS0` (Starship) | **appended** — `${ __casper_preexec; }` is added, nothing replaced |
+| `PROMPT_COMMAND` (Starship + Herdr rename) | one entry **prepended**, original entries untouched, `$?` preserved |
+| `trap DEBUG` (Herdr rename) | **never touched** — Casper installs no trap at all |
+| Bash < 5.3 | the hook refuses to install (current-shell `${ }` in `PS0` needs 5.3) |
 
-Save `ghost.json` and it hot-reloads.
+Sourcing it twice is a no-op. It activates in an interactive shell inside a
+recognised terminal emulator — Ghostty and kitty (the terminal in daily use on
+this machine), plus foot/wezterm/alacritty — and never in scripts or
+non-interactive shells. `CASPER_FORCE=1` installs anywhere, `CASPER_FORCE=0`
+never installs.
 
 ## Manual testing
 
 ```sh
-omarchy-shell semihmutlu.ghost whisper "boo 👻"
-omarchy-shell semihmutlu.ghost test      # fake theme-change message
-omarchy-shell semihmutlu.ghost digest    # yesterday's recap
-omarchy-shell semihmutlu.ghost week      # last 7 days
-omarchy-shell semihmutlu.ghost month     # this month so far
-omarchy-shell semihmutlu.ghost poke      # stale-workspace poke, now
-omarchy-shell semihmutlu.ghost insight   # a metric insight, right now
-omarchy-shell semihmutlu.ghost state     # the long-term memory
-omarchy-shell semihmutlu.ghost probe     # live window/workspace state
+omarchy-shell semihmutlu.ghost whisper "merhaba"        # say something now
+omarchy-shell semihmutlu.ghost commandFinished '{"family":"cargo","subcommand":"test","code":1,"durationMs":400,"session":"manual1"}'
+omarchy-shell semihmutlu.ghost state                    # what it remembers
+
+CASPER_DEBUG=1                 # in ~/.bashrc before the source line
+cat /tmp/casper-hook.log       # why it spoke, or why it stayed quiet
 ```
 
-## Architecture
+## Tests
 
+```sh
+node test/brain.test.js     # classifier, dosage, tone, allowlist parity with the hook
+bash test/hook.test.sh      # real interactive Bash through a pty: events, silence, no clobbering
+/usr/lib/qt6/bin/qmllint -I /usr/share/omarchy/shell Ghost.qml Panel.qml BarWidget.qml
+omarchy plugin validate .
 ```
-Ghost.qml         event wiring + the whisper bubble (Quickshell overlay)
-Brain.js          pure logic: cooldowns, quiet hours, templates, memory, insights
-bin/ghost-llm     optional LLM brain (stdin context JSON → one line out)
-test/brain.test.js  unit tests — node --test test/brain.test.js
-state.json        long-term memory (~/.local/state/omarchy/ghost/)
-```
 
-- **Overlay plugin** (`kinds: ["overlay"]`, `keepLoaded: true`) — mounts at
-  shell startup, stays invisible until it whispers.
-- **Events** come from `ToplevelManager` (active window, open/close),
-  `Hyprland` (workspaces), theme files, and time.
-- **Brain** decides *whether* (cooldown, quiet hours, idle, noise gate, daily
-  budget, dismissal weights) and *what* (de-duplicated weighted templates).
-- **Memory** accumulates minutes per category, focus sessions, per-day-part
-  counts, peak hour — shipped into 90 days of history on rollover. Weekly and
-  monthly recaps are computed from that. Occupied workspaces you ignore get a
-  rare poke.
+## Files
 
-## Customizing messages
+| File | Role |
+|---|---|
+| `Brain.js` | pure logic: validation, classification, dosage, tone, phrases. Runs in Quickshell and Node |
+| `bin/casper-hook` | Bash hook: allowlist + one IPC call per interesting command |
+| `Ghost.qml` | overlay: the bottom-right bubble, one IPC handler |
+| `BarWidget.qml` | the 👻 bar icon |
+| `Panel.qml` | settings panel (dosage, triggers, tone, preview) |
+| `manifest.json` | plugin manifest — id stays `semihmutlu.ghost` so this replaces ScreenBuddy |
 
-The template library lives in `Brain.js` (search for `var T = {}`). Each
-category is an array of lines with `{placeholders}` — add your own voice,
-remove what you don't like, hot-reload picks it up.
+## Known limits (v0)
 
-## Contributing
-
-PRs welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Full design rationale in
-[docs/SPEC.md](docs/SPEC.md).
+* Only "simple" commands are tracked: one or two words, no shell operators.
+  `git commit -m "..."` is therefore invisible — deliberate, and the first
+  thing to revisit if it feels too narrow.
+* No history, so no session summary and no "explain the last failure" yet.
+  Both need the LLM step and a context you approve case by case.
+* No idle/late-night/ambient comments. Those belonged to ScreenBuddy and were
+  removed on purpose.
+* Linux/Bash first. zsh is not installed on this machine; the hook detects the
+  shell and does not install under zsh.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT

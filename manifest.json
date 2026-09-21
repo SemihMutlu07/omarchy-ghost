@@ -1,14 +1,22 @@
 {
   "schemaVersion": 1,
   "id": "semihmutlu.ghost",
-  "name": "ScreenBuddy",
-  "version": "0.2.0",
+  "name": "Casper",
+  "version": "0.1.0",
   "author": "Semih Mutlu",
   "license": "MIT",
-  "description": "A quiet buddy in the corner of your Omarchy desktop, occasionally ready-made comments in Semih's taste. Sometimes it says boo.",
-  "kinds": ["overlay"],
+  "description": "A deterministic local command-finished companion for Ghostty sessions.",
+  "kinds": ["overlay", "bar-widget"],
   "keepLoaded": true,
   "entryPoints": {
-    "overlay": "Ghost.qml"
+    "overlay": "Ghost.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Casper",
+    "description": "Command-finished companion settings",
+    "category": "Appearance",
+    "allowMultiple": false,
+    "defaultSection": "right"
   }
 }

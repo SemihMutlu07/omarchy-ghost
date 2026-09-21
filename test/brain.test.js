@@ -1,425 +1,168 @@
-// Ghost brain unit tests — run with: node --test test/brain.test.js
-
+// Unit tests for Brain.js — the deterministic part of Casper.
+// Run: node --test test/brain.test.js   (or: node test/brain.test.js)
 const assert = require("node:assert/strict")
-const { test } = require("node:test")
-
+const test = require("node:test")
+const fs = require("node:fs")
+const path = require("node:path")
 const Brain = require("../Brain.js")
 
-function freshConfig(overrides) {
-  const cfg = Object.assign({
-    graceSec: 0,
-    minIntervalSec: 0,
-    maxIntervalSec: 600,
-    variantCooldownSec: 0,
-    quietHoursStart: 12,
-    quietHoursEnd: 12, // disabled
-    idleSeconds: 600,
-    chances: { focus: 1, window: 1, workspace: 1, fullscreen: 1, longSession: 1, lateNight: 1, title: 1, unexpected: 1, insight: 1 }
-  }, overrides || {})
+const event = (overrides = {}) =>
+  Object.assign({ family: "git", subcommand: "status", code: 1, durationMs: 400, session: "s1" }, overrides)
+
+function fresh(overrides = {}) {
   Brain.resetMemory()
-  return Brain._setConfig(cfg)
+  Brain.setConfig(Object.assign({}, Brain.DEFAULTS, { cooldownSec: 0, budgetPerHour: 50, minDurationMs: 0 }, overrides))
 }
 
-test("theme change always produces a message", () => {
-  freshConfig()
-  const msg = Brain.feed({ type: "theme", theme: "catppuccin" })
-  assert.ok(msg && msg.length > 0, "theme message should be non-empty")
-  assert.ok(
-    msg.includes("catppuccin") || msg.includes("colours") || msg.includes("theme"),
-    "theme message should mention the change"
-  )
+test("accepts only allowlisted families and subcommands", () => {
+  fresh()
+  assert.equal(Brain.validEvent(event()), true)
+  assert.equal(Brain.validEvent(event({ subcommand: "" })), true)
+  assert.equal(Brain.validEvent(event({ family: "git status" })), false, "raw args are not a family")
+  assert.equal(Brain.validEvent(event({ family: "rm" })), false, "non-allowlisted binary")
+  assert.equal(Brain.validEvent(event({ subcommand: "--porcelain" })), false, "unknown subcommand")
+  assert.equal(Brain.validEvent(event({ subcommand: "commit" })), true)
+  assert.equal(Brain.validEvent(event({ session: "../../etc/passwd" })), false)
+  assert.equal(Brain.validEvent(event({ code: "1; rm -rf /" })), false)
+  assert.equal(Brain.validEvent(event({ durationMs: "9999999999" })), false)
+  assert.equal(Brain.finish(event({ family: "rm", subcommand: "", code: 1 })), "")
 })
 
-test("focus on a known app category uses its templates", () => {
-  freshConfig()
-  const msg = Brain.feed({ type: "focus", class: "nvim" })
-  assert.ok(msg && msg.length > 0)
+test("a failure speaks, then only a same-session, same-family success recovers", () => {
+  fresh({ minDurationMs: 60000 })
+  assert.match(Brain.finish(event()), /git status/)
+  assert.equal(Brain.state().lastKind, "failure")
+  assert.equal(Brain.finish(event({ code: 0, session: "other" })), "", "another session is not a recovery")
+  assert.ok(Brain.finish(event({ code: 0 })), "same session + family recovers")
+  assert.equal(Brain.state().lastKind, "recovery")
 })
 
-test("unknown apps get the fallback", () => {
-  freshConfig()
-  const msg = Brain.feed({ type: "focus", class: "some-weird-app" })
-  assert.ok(msg && msg.length > 0)
-  assert.match(msg, /weird/i)
+test("three failures in a row escalate to the repeat line", () => {
+  fresh()
+  Brain.finish(event())
+  Brain.finish(event())
+  Brain.finish(event())
+  assert.equal(Brain.state().lastKind, "repeat")
+  assert.match(Brain.state().lastMessage, /yine|tekrar|again|bir daha/)
 })
 
-test("focus remembers the app for later ambient lines", () => {
-  freshConfig()
-  Brain.feed({ type: "focus", class: "firefox" })
-  assert.equal(Brain._state().lastApp, "firefox")
+test("Ctrl-C and signal-like exits are never failures and leave no memory", () => {
+  fresh()
+  assert.equal(Brain.finish(event({ code: 130 })), "")
+  assert.equal(Brain.finish(event({ code: 143 })), "")
+  assert.equal(Brain.state().trackedFamilies, 0)
 })
 
-test("min interval gates low-priority events", () => {
-  freshConfig({ minIntervalSec: 3600 })
-  const first = Brain.feed({ type: "focus", class: "firefox" })
-  const second = Brain.feed({ type: "focus", class: "code" })
-  assert.ok(first, "first focus should pass")
-  assert.equal(second, "", "second focus within cooldown should be silent")
-  // high priority cuts through the cooldown
-  const theme = Brain.feed({ type: "theme", theme: "gruvbox" })
-  assert.ok(theme, "theme should bypass cooldown")
+test("long commands are 'slow', short ones stay quiet", () => {
+  fresh({ minDurationMs: 2000 })
+  assert.equal(Brain.finish(event({ code: 0, durationMs: 500 })), "")
+  const slow = Brain.finish(event({ code: 0, durationMs: 3400 }))
+  assert.equal(Brain.state().lastKind, "slow")
+  assert.match(slow, /3s/)
 })
 
-test("quiet hours suppress ambient and focus", () => {
-  freshConfig({ quietHoursStart: 0, quietHoursEnd: 24 })
-  assert.equal(Brain.feed({ type: "ambient" }), "")
-  assert.equal(Brain.feed({ type: "focus", class: "code" }), "")
-  // but theme still gets through
-  assert.ok(Brain.feed({ type: "theme", theme: "solarized" }))
+test("an old failure does not turn a later success into a recovery", () => {
+  fresh({ failureWindowMs: 1000, minDurationMs: 60000 })
+  let now = 1_000_000
+  Brain._setNow(() => now)
+  Brain.finish(event())
+  now += 5000
+  assert.equal(Brain.finish(event({ code: 0 })), "", "outside the window this is just a silent success")
+  Brain._setNow(() => Date.now())
 })
 
-test("idle blocks low-priority chatter, welcome-back cuts through", () => {
-  freshConfig()
-  Brain.markIdle()
-  assert.equal(Brain.feed({ type: "window-open", count: 1 }), "")
-  assert.equal(Brain.feed({ type: "ambient" }), "")
-  const msg = Brain.feed({ type: "welcome-back" })
-  assert.ok(msg && msg.length > 0)
-  // coming back is an activity event
-  assert.equal(Brain.activity(), true)
+test("cooldown, hourly budget, dedup, silence and triggers gate the output", () => {
+  fresh({ cooldownSec: 60 })
+  assert.ok(Brain.finish(event()))
+  assert.equal(Brain.finish(event({ family: "make", subcommand: "" })), "", "cooldown")
+
+  fresh({ cooldownSec: 0, budgetPerHour: 1 })
+  assert.ok(Brain.finish(event()))
+  assert.equal(Brain.finish(event({ family: "make", subcommand: "" })), "", "hourly budget")
+
+  fresh({ cooldownSec: 0, triggers: { failure: false, recovery: true, slow: true } })
+  assert.equal(Brain.finish(event()), "", "trigger switched off")
+
+  fresh({ cooldownSec: 0, silenceUntil: Date.now() + 3600000 })
+  assert.equal(Brain.finish(event()), "", "silenced")
+
+  fresh({ cooldownSec: 0, enabled: false })
+  assert.equal(Brain.finish(event()), "", "disabled")
+
+  fresh({ cooldownSec: 0, rates: { failure: 0, recovery: 0, slow: 0 } })
+  assert.equal(Brain.finish(event()), "", "zero rate")
 })
 
-test("workspace messages only for interesting workspaces", () => {
-  freshConfig()
-  assert.equal(Brain.feed({ type: "workspace", workspace: 2, windows: 1 }), "")
-  const msg = Brain.feed({ type: "workspace", workspace: 3, windows: 7 })
-  assert.ok(msg && msg.length > 0)
-  assert.match(msg, /3/)
-})
-
-test("long-session skips under one hour", () => {
-  freshConfig()
-  assert.equal(Brain.feed({ type: "long-session" }), "")
-})
-
-test("pluralization: one vs many", () => {
-  freshConfig()
-  Brain.setWindowCount(1)
-  const one = Brain.feed({ type: "ambient" })
-  assert.ok(!/1 windows/.test(one || ""), "should not say '1 windows'")
-  Brain.setWindowCount(4)
-  const many = Brain.feed({ type: "ambient" })
-  assert.ok(!/4 window /.test(many || ""), "should say '4 windows'")
-})
-
-test("config parse merges and keeps defaults", () => {
-  const cfg = Brain.parseConfig('{"minIntervalSec": 123, "chances": {"focus": 0.5}, "unknownKey": true}')
-  assert.equal(cfg.minIntervalSec, 123)
-  assert.equal(cfg.chances.focus, 0.5)
-  assert.equal(cfg.chances.window, 0.4, "untouched chance keeps default")
-  assert.equal(cfg.enabled, true)
-})
-
-test("disabled ghost stays silent", () => {
-  freshConfig({ enabled: false })
-  assert.equal(Brain.feed({ type: "theme", theme: "tokyo-night" }), "")
-})
-
-// ------------------------------------------------------------ long-term memory
-
-test("noteFocus accumulates minutes and first activity", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState('{}')
-  Brain.noteFocus("code", 60 * 60 * 1000) // 1h in editor
-  Brain.noteFocus("firefox", 30 * 60 * 1000)
-  const m = Brain._memory()
-  assert.equal(m.todayMinutes.editor, 60)
-  assert.equal(m.todayMinutes.browser, 30)
-  assert.ok(m.firstActivityHour >= 0)
-})
-
-test("digest summarizes yesterday once", () => {
-  freshConfig()
-  Brain._resetMemory()
-  // yesterday's record, today's date is "now"
-  const y = new Date(Date.now() - 86400000)
-  const ykey = `${y.getFullYear()}-${String(y.getMonth()+1).padStart(2,"0")}-${String(y.getDate()).padStart(2,"0")}`
-  Brain.loadState(JSON.stringify({
-    today: ykey,
-    todayMinutes: { editor: 200, browser: 65, terminal: 20 },
-    windowsOpened: 23,
-    days: {},
-    byPart: {},
-    weights: {},
-    dismissals: {},
-    lastDigestFor: ""
-  }))
-  const msg = Brain.rolloverIfNeeded()
-  assert.ok(msg && msg.length > 0, "digest should fire after rollover")
-  assert.match(msg, /3h 20m in editor/)
-  assert.match(msg, /browser/)
-  // second call: no duplicate
-  assert.equal(Brain.digestMessage(ykey), "")
-  // yesterday is now in memory.days
-  assert.ok(Brain._memory().days[ykey])
-})
-
-test("usualFor finds the common app for a day-part", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const y = new Date(Date.now() - 86400000)
-  const ykey = `${y.getFullYear()}-${String(y.getMonth()+1).padStart(2,"0")}-${String(y.getDate()).padStart(2,"0")}`
-  const y2 = new Date(Date.now() - 2*86400000)
-  const ykey2 = `${y2.getFullYear()}-${String(y2.getMonth()+1).padStart(2,"0")}-${String(y2.getDate()).padStart(2,"0")}`
-  Brain.loadState(JSON.stringify({
-    today: ykey,
-    todayMinutes: {}, byPart: {}, weights: {}, dismissals: {}, windowsOpened: 0, lastDigestFor: "",
-    days: {
-      [ykey]:  { byPart: { afternoon: { editor: 10, browser: 2 } }, minutes: {}, windowsOpened: 0 },
-      [ykey2]: { byPart: { afternoon: { editor: 8 } }, minutes: {}, windowsOpened: 0 }
-    }
-  }))
-  assert.equal(Brain.usualFor("afternoon", "browser"), "editor")
-  // not enough data for night
-  assert.equal(Brain.usualFor("night", "editor"), "")
-})
-
-test("dismissals shrink the category weight, keeping grows it", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState('{}')
-  assert.equal(Brain.weightFor("browser"), 1)
-  Brain.noteDismissal("focus-browser")
-  assert.ok(Brain.weightFor("browser") < 1)
-  Brain.noteKept("focus-browser")
-  assert.ok(Brain.weightFor("browser") >= 0.9)
-  // floor
-  for (let i = 0; i < 20; i++) Brain.noteDismissal("focus-browser")
-  assert.ok(Brain.weightFor("browser") >= 0.3)
-})
-
-test("title changes produce messages, deduped", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const msg = Brain.feed({ type: "title", title: "make test" })
-  assert.ok(msg && msg.length > 0)
-  assert.match(msg, /make test/)
-  assert.equal(Brain.feed({ type: "title", title: "make test" }), "")
-  assert.equal(Brain.feed({ type: "title", title: "~/dev/foo" }), "", "path prompts are skipped")
-})
-
-// ------------------------------------------------------------ metric insights
-
-function seedSessions(list) {
-  const m = Brain._memory()
-  m.sessions = list.map((s) => ({ app: s.app, durationMs: s.min * 60000 }))
-  m.currentSession = null
-  m.switchCount = list.length
-  return m
-}
-
-test("focusSwitched records sessions and switch count", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState('{}')
-  Brain.focusSwitched("code")
-  Brain.focusSwitched("firefox")
-  Brain.focusSwitched("")
-  const m = Brain._memory()
-  assert.equal(m.switchCount, 2, "empty app should not count")
-  assert.equal(m.currentSession.app, "browser")
-})
-
-test("stretch insight fires when a long session appears", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const m = Brain.loadState('{}')
-  m.sessions = [{ app: "editor", durationMs: 47 * 60000 }]
-  m.currentSession = null
-  const s = Brain.insightStretch()
-  assert.ok(s, "stretch should fire at 47 min")
-  assert.equal(s.ctx.minutes, "47")
-  assert.equal(s.ctx.app, "the editor")
-  // record broken: needs +10 min
-  assert.equal(Brain.insightStretch(), null)
-  m.sessions = [{ app: "editor", durationMs: 50 * 60000 }]
-  assert.equal(Brain.insightStretch(), null, "50 < 47+10")
-  m.sessions = [{ app: "editor", durationMs: 60 * 60000 }]
-  assert.ok(Brain.insightStretch())
-})
-
-test("rhythm insight catches browser/editor ping-pong", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const m = Brain.loadState('{}')
-  const sessions = []
-  for (let i = 0; i < 8; i++) {
-    sessions.push({ app: i % 2 === 0 ? "browser" : "editor", durationMs: 3 * 60000 })
-  }
-  m.sessions = sessions
-  m.currentSession = null
-  const r = Brain.insightRhythm()
-  assert.ok(r, "rhythm should fire")
-  assert.equal(r.ctx.minutes, "3")
-  assert.equal(Brain.insightRhythm(), null, "once per day")
-})
-
-test("deep insight announces each new full hour", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const m = Brain.loadState('{}')
-  m.activeMinutes = 30
-  assert.equal(Brain.insightDeep(), null, "under an hour")
-  m.activeMinutes = 70
-  const d = Brain.insightDeep()
-  assert.ok(d)
-  assert.equal(d.ctx.hours, "1")
-  m.activeMinutes = 90
-  assert.equal(Brain.insightDeep(), null, "same hour, no repeat")
-  m.activeMinutes = 130
-  assert.equal(Brain.insightDeep().ctx.hours, "2")
-})
-
-test("insight respects the daily budget", () => {
-  freshConfig({ insightDailyCap: 2 })
-  Brain._resetMemory()
-  const m = Brain.loadState('{}')
-  m.activeMinutes = 130 // qualifies for deep
-  const first = Brain.insight()
-  const second = Brain.insight()
-  const third = Brain.insight()
-  assert.ok(first || second, "budget allows a couple")
-  assert.equal(third, "", "budget exhausted")
-})
-
-test("peak insight needs 2+ days of history", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const m = Brain.loadState('{}')
-  const nowH = new Date().getHours()
-  const mk = (offset, peak) => {
-    const d = new Date(Date.now() - offset * 86400000)
-    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
-  }
-  // one day only -> not enough
-  m.days = { [mk(1, nowH)]: { peakHour: nowH } }
-  assert.equal(Brain.insightPeak(), null)
-  // two days agreeing on the current hour
-  m.days = {
-    [mk(1, nowH)]: { peakHour: nowH },
-    [mk(2, nowH)]: { peakHour: nowH }
-  }
-  const p = Brain.insightPeak()
-  assert.ok(p, "peak fires at the historical golden hour")
-  assert.equal(Brain.insightPeak(), null, "once per day")
-})
-
-// ------------------------------------------------------------ recaps + companion
-
-function dateKey(d) {
-  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`
-}
-
-test("week recap sums last 7 days including today", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const today = new Date()
-  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
-  Brain.loadState(JSON.stringify({
-    today: dateKey(today),
-    todayMinutes: { terminal: 120 },
-    days: { [dateKey(y)]: { minutes: { terminal: 180, browser: 60 } } },
-    lastWeeklyFor: ""
-  }))
-  const msg = Brain.weekMessage({ force: true })
-  assert.ok(msg)
-  assert.match(msg, /5h in terminal/)
-  assert.match(msg, /browser/)
-})
-
-test("automatic week recap fires once per iso week", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const today = new Date()
-  const y = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1)
-  Brain.loadState(JSON.stringify({
-    today: dateKey(today),
-    todayMinutes: { terminal: 60 },
-    days: { [dateKey(y)]: { minutes: { terminal: 60 } } },
-    lastWeeklyFor: ""
-  }))
-  const first = Brain.weekMessage({})
+test("the same line is never said twice in a row", () => {
+  fresh({ cooldownSec: 0 })
+  const first = Brain.finish(event({ family: "make", subcommand: "" }))
   assert.ok(first)
-  assert.equal(Brain.weekMessage({}), "", "second automatic week recap is silent")
+  Brain.resetMemory()
+  Brain.setConfig(Object.assign({}, Brain.DEFAULTS, { cooldownSec: 0, budgetPerHour: 50, minDurationMs: 0 }))
+  const again = Brain.finish(event({ family: "make", subcommand: "" }))
+  assert.equal(first, again, "same input, same deterministic line")
 })
 
-test("automatic week recap waits for two days of data", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const today = new Date()
-  Brain.loadState(JSON.stringify({
-    today: dateKey(today),
-    todayMinutes: { terminal: 180 },
-    days: {},
-    lastWeeklyFor: ""
-  }))
-  assert.equal(Brain.weekMessage({}), "")
-  const forced = Brain.weekMessage({ force: true })
-  assert.ok(forced)
-  assert.match(forced, /terminal/)
+test("mode presets set dosage and explicit config keys win", () => {
+  const quiet = Brain.parseConfig('{"mode":"Quiet"}')
+  const balanced = Brain.parseConfig('{}')
+  const chatty = Brain.parseConfig('{"mode":"Chatty"}')
+  assert.ok(quiet.budgetPerHour < balanced.budgetPerHour, "quiet is stingier than balanced")
+  assert.ok(chatty.budgetPerHour > balanced.budgetPerHour, "chatty is looser than balanced")
+  assert.ok(quiet.cooldownSec > chatty.cooldownSec)
+  assert.equal(balanced.mode, "Balanced", "default mode")
+  assert.equal(Brain.parseConfig('{"mode":"nope"}').mode, "Balanced", "unknown mode falls back")
+  assert.equal(Brain.parseConfig('{"mode":"Quiet","budgetPerHour":42}').budgetPerHour, 42, "explicit key wins")
+  assert.equal(Brain.parseConfig('{"sarcasm":5}').sarcasm, 1, "tone values are clamped")
+  assert.equal(Brain.parseConfig("not json").mode, "Balanced")
 })
 
-test("month recap reads the previous month", () => {
-  freshConfig()
-  Brain._resetMemory()
-  const today = new Date()
-  const prev = new Date(today.getFullYear(), today.getMonth() - 1, 15)
-  Brain.loadState(JSON.stringify({
-    today: dateKey(today),
-    todayMinutes: {},
-    days: { [dateKey(prev)]: { minutes: { terminal: 600 } } },
-    lastMonthlyFor: ""
-  }))
-  const msg = Brain.monthMessage({})
-  assert.ok(msg)
-  assert.match(msg, /10h in terminal/)
-  assert.equal(Brain.monthMessage({}), "", "second monthly recap is silent")
+test("memory stays bounded by maxSessions", () => {
+  fresh({ maxSessions: 2 })
+  Brain.finish(event({ session: "a", code: 1 }))
+  Brain.finish(event({ session: "b", code: 1 }))
+  Brain.finish(event({ session: "c", code: 1 }))
+  assert.equal(Brain.state().trackedFamilies, 2, "oldest session is evicted")
 })
 
-test("companion pokes when several workspaces sit untouched", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState("{}")
-  const now = Date.now()
-  Brain.noteWorkspaces([
-    { id: 1, name: "main", windows: 2, focused: true },
-    { id: 4, name: "movieswrapped", windows: 3, focused: false },
-    { id: 5, name: "clipzi", windows: 1, focused: false },
-    { id: 6, name: "mistakes", windows: 2, focused: false }
-  ], now)
-  const msg = Brain.companion(now)
-  assert.ok(msg && msg.length > 0)
-  assert.match(msg, /movieswrapped|clipzi|mistakes|sitting|open/i)
-  assert.equal(Brain.companion(now), "", "companion has a long gap")
+test("tone knobs change the line deterministically", () => {
+  const base = { family: "make", subcommand: "", code: 2, durationMs: 100, session: "s1" }
+
+  Brain.resetMemory()
+  Brain.setConfig(Object.assign({}, Brain.DEFAULTS, { cooldownSec: 0, budgetPerHour: 50, sarcasm: 0.1, profanity: false }))
+  const gentle = Brain.finish(base)
+
+  Brain.resetMemory()
+  Brain.setConfig(Object.assign({}, Brain.DEFAULTS, { cooldownSec: 0, budgetPerHour: 50, sarcasm: 0.9, profanity: true }))
+  const rude = Brain.finish(base)
+
+  assert.notEqual(gentle, rude, "sarcasm/profanity must be visible in the output")
+  assert.match(gentle, /tamam/, "low sarcasm replaces the barbed clause")
+
+  const preview = Brain.preview(Object.assign({}, Brain.DEFAULTS, { technical: 0.9 }))
+  assert.match(preview, /exit \d+/, "high technical appends the exit code")
+  const terse = Brain.preview(Object.assign({}, Brain.DEFAULTS, { verbosity: 0.1 }))
+  assert.ok(terse.length < preview.length, "low verbosity shortens the line")
+  assert.equal(Brain.preview(Brain.DEFAULTS), Brain.preview(Brain.DEFAULTS), "preview is deterministic")
 })
 
-test("companion stays quiet with only two occupied workspaces", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState("{}")
-  const now = Date.now()
-  Brain.noteWorkspaces([
-    { id: 1, name: "main", windows: 2, focused: true },
-    { id: 2, name: "other", windows: 1, focused: false }
-  ], now)
-  assert.equal(Brain.companion(now), "")
-})
-
-test("workspace names prefer window titles over hypr numbers", () => {
-  freshConfig()
-  Brain._resetMemory()
-  Brain.loadState("{}")
-  const now = Date.now()
-  Brain.noteWorkspaces([
-    { id: 1, name: "1", title: "Main", windows: 2, focused: true },
-    { id: 4, name: "4", title: "omarchy: [4] movieswrapped-scraper", windows: 3, focused: false },
-    { id: 5, name: "5", title: "Clipzi.app", windows: 1, focused: false },
-    { id: 6, name: "6", title: "Mistakes", windows: 2, focused: false }
-  ], now)
-  const named = Brain._memory().workspaces["4"].name
-  assert.match(named, /movieswrapped/i)
-  const msg = Brain.companion(now)
-  assert.ok(msg)
-  assert.match(msg, /movieswrapped|Clipzi|Mistakes|open|sitting/i)
+test("bin/casper-hook allowlist stays in sync with Brain.FAMILIES", () => {
+  const hook = fs.readFileSync(path.join(__dirname, "..", "bin", "casper-hook"), "utf8")
+  const start = hook.indexOf('case "$family:$sub" in')
+  assert.ok(start > 0, "could not find the hook's family allowlist")
+  const block = hook.slice(start, hook.indexOf("esac", start))
+  const seen = {}
+  for (const match of block.matchAll(/([a-z0-9_+:|-]+)\)\s*;;/g)) {
+    for (const token of match[1].split("|")) {
+      const [family, sub] = token.split(":")
+      assert.ok(family, `unparsable allowlist token: ${token}`)
+      seen[family] = seen[family] || []
+      seen[family].push(sub)
+    }
+  }
+  const expected = Object.keys(Brain.FAMILIES).sort()
+  assert.deepEqual(Object.keys(seen).sort(), expected, "hook and Brain must allowlist the same families")
+  for (const family of expected) {
+    assert.deepEqual(seen[family].slice().sort(), Brain.FAMILIES[family].slice().sort(), `subcommands differ for ${family}`)
+  }
 })
